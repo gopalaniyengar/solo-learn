@@ -45,6 +45,8 @@ from solo.backbones import (
     vit_large,
     vit_small,
     vit_tiny,
+    resnet18,
+    resnet50,
     wide_resnet28w2,
     wide_resnet28w8,
 )
@@ -54,8 +56,6 @@ from solo.utils.metrics import accuracy_at_k, weighted_mean
 from solo.utils.misc import remove_bias_and_norm_from_weight_decay
 from solo.utils.momentum import MomentumUpdater, initialize_momentum_params
 from torch.optim.lr_scheduler import MultiStepLR
-from torchvision.models.resnet import resnet50
-from solo.utils.resnet_custom import resnet18
 
 def static_lr(
     get_lr: Callable, param_group_indexes: Sequence[int], lrs_to_replace: Sequence[float]
