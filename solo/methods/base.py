@@ -37,8 +37,6 @@ from solo.backbones import (
     poolformer_s12,
     poolformer_s24,
     poolformer_s36,
-    resnet18,
-    resnet50,
     swin_base,
     swin_large,
     swin_small,
@@ -56,7 +54,8 @@ from solo.utils.metrics import accuracy_at_k, weighted_mean
 from solo.utils.misc import remove_bias_and_norm_from_weight_decay
 from solo.utils.momentum import MomentumUpdater, initialize_momentum_params
 from torch.optim.lr_scheduler import MultiStepLR
-
+from torchvision.models.resnet import resnet50
+from solo.utils.resnet_custom import resnet18
 
 def static_lr(
     get_lr: Callable, param_group_indexes: Sequence[int], lrs_to_replace: Sequence[float]
@@ -243,7 +242,7 @@ class BaseMethod(pl.LightningModule):
             kwargs["window_size"] = 4
 
         method = self.extra_args.get("method", None)
-        self.backbone = self.base_model(method, **kwargs)
+        self.backbone = self.base_model(**kwargs)#(method, **kwargs)
         if self.backbone_name.startswith("resnet"):
             self.features_dim = self.backbone.inplanes
             # remove fc layer
@@ -459,9 +458,9 @@ class BaseMethod(pl.LightningModule):
 
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
-        feats = self.backbone(X)
+        feats, inst_norm_feats = self.backbone(X)
         logits = self.classifier(feats.detach())
-        return {"logits": logits, "feats": feats}
+        return {"logits": logits, "feats": feats, "inst_norm_feats": inst_norm_feats}
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Basic multicrop forward method that performs the forward pass
@@ -671,7 +670,7 @@ class BaseMomentumMethod(BaseMethod):
             kwargs["window_size"] = 4
 
         method = self.extra_args.get("method", None)
-        self.momentum_backbone = self.base_model(method, **kwargs)
+        self.momentum_backbone = self.base_model(**kwargs)#(method, **kwargs)
         if self.backbone_name.startswith("resnet"):
             # remove fc layer
             self.momentum_backbone.fc = nn.Identity()
@@ -767,8 +766,8 @@ class BaseMomentumMethod(BaseMethod):
 
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
-        feats = self.momentum_backbone(X)
-        return {"feats": feats}
+        feats, inst_norm_feats = self.momentum_backbone(X)
+        return {"feats": feats, "inst_norm_feats": inst_norm_feats}
 
     def _shared_step_momentum(self, X: torch.Tensor, targets: torch.Tensor) -> Dict[str, Any]:
         """Forwards a batch of images X in the momentum backbone and optionally computes the

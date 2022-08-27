@@ -22,9 +22,9 @@ import os
 from pathlib import Path
 
 from solo.args.setup import parse_args_umap
-from solo.data.classification_dataloader import prepare_data
 from solo.methods import METHODS
 from solo.utils.auto_umap import OfflineUMAP
+from solo.data.classification_dataloader import prepare_data
 
 
 def main():
@@ -50,9 +50,8 @@ def main():
     # prepare data
     train_loader, val_loader = prepare_data(
         args.dataset,
-        data_dir=args.data_dir,
-        train_dir=args.train_dir,
-        val_dir=args.val_dir,
+        train_data_path=args.train_data_path,
+        val_data_path=args.val_data_path,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
     )
@@ -63,9 +62,8 @@ def main():
     device = "cuda:0"
     model = model.to(device)
 
-    umap.plot(device, model, train_loader, "im100_train_umap.pdf")
-    umap.plot(device, model, val_loader, "im100_val_umap.pdf")
-
+    umap.plot(device, model, train_loader, "/content/drive/MyDrive/BTP/UMAPs/train")
+    umap.plot(device, model, val_loader, "/content/drive/MyDrive/BTP/UMAPs/val")
 
 if __name__ == "__main__":
     main()
