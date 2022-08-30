@@ -18,10 +18,14 @@
 # DEALINGS IN THE SOFTWARE.
 
 import logging
+import os
+import functools
+import operator
+import warnings
 from argparse import ArgumentParser
 from functools import partial
 from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
-
+import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -45,8 +49,10 @@ from solo.backbones import (
     vit_large,
     vit_small,
     vit_tiny,
-    resnet18,
-    resnet50,
+    resnet18_bn,
+    resnet50_bn,
+    resnet18_in,
+    resnet50_in,
     wide_resnet28w2,
     wide_resnet28w8,
 )
@@ -68,8 +74,10 @@ def static_lr(
 
 class BaseMethod(pl.LightningModule):
     _BACKBONES = {
-        "resnet18": resnet18,
-        "resnet50": resnet50,
+        "resnet18_bn": resnet18_bn,
+        "resnet50_bn": resnet50_bn,
+        "resnet18_in": resnet18_in,
+        "resnet50_in": resnet50_in,
         "vit_tiny": vit_tiny,
         "vit_small": vit_small,
         "vit_base": vit_base,
@@ -460,7 +468,7 @@ class BaseMethod(pl.LightningModule):
             X = X.to(memory_format=torch.channels_last)
         feats, inst_norm_feats = self.backbone(X)
         logits = self.classifier(feats.detach())
-        return {"logits": logits, "feats": feats, "inst_norm_feats": inst_norm_feats}
+        return {"logits": logits, "feats": feats, "style_feats": inst_norm_feats}
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Basic multicrop forward method that performs the forward pass
@@ -767,7 +775,7 @@ class BaseMomentumMethod(BaseMethod):
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
         feats, inst_norm_feats = self.momentum_backbone(X)
-        return {"feats": feats, "inst_norm_feats": inst_norm_feats}
+        return {"feats": feats, "style_feats": inst_norm_feats}
 
     def _shared_step_momentum(self, X: torch.Tensor, targets: torch.Tensor) -> Dict[str, Any]:
         """Forwards a batch of images X in the momentum backbone and optionally computes the

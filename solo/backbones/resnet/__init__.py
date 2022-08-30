@@ -17,16 +17,23 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-from .resnet import resnet18 as default_resnet18
-from .resnet import resnet50 as default_resnet50
+from .resnet import resnet18_bn as default_resnet18
+from .resnet import resnet50_bn as default_resnet50
+
+from .resnet import resnet18_in as custom_resnet18
+from .resnet import resnet50_in as custom_resnet50
 
 
-def resnet18(method, *args, **kwargs):
+def resnet18_bn(method, *args, **kwargs):
     return default_resnet18(*args, **kwargs)
 
-
-def resnet50(method, *args, **kwargs):
+def resnet50_bn(method, *args, **kwargs):
     return default_resnet50(*args, **kwargs)
 
+def resnet18_in(method, *args, **kwargs):
+    return custom_resnet18(*args, **kwargs)
 
-__all__ = ["resnet18", "resnet50"]
+def resnet50_in(method, *args, **kwargs):
+    return custom_resnet50(*args, **kwargs)
+
+__all__ = ["resnet18_in", "resnet50_in", "resnet18_bn", "resnet50_bn"]

@@ -27,7 +27,7 @@ import numpy as np
 from solo.losses.byol import byol_loss_func
 from solo.methods.base import BaseMomentumMethod
 from solo.utils.momentum import initialize_momentum_params
-
+from solo.utils.grl import reverse_grad
 
 class BYOL(BaseMomentumMethod):
     def __init__(
@@ -50,7 +50,7 @@ class BYOL(BaseMomentumMethod):
         # projector
         self.projector = nn.Sequential(
             nn.Linear(self.features_dim, proj_hidden_dim),
-            nn.BatchNorm1d(proj_hidden_dim),
+            # nn.BatchNorm1d(proj_hidden_dim),
             nn.ReLU(),
             nn.Linear(proj_hidden_dim, proj_output_dim),
         )
@@ -58,7 +58,7 @@ class BYOL(BaseMomentumMethod):
         # momentum projector
         self.momentum_projector = nn.Sequential(
             nn.Linear(self.features_dim, proj_hidden_dim),
-            nn.BatchNorm1d(proj_hidden_dim),
+            # nn.BatchNorm1d(proj_hidden_dim),
             nn.ReLU(),
             nn.Linear(proj_hidden_dim, proj_output_dim),
         )
@@ -67,9 +67,16 @@ class BYOL(BaseMomentumMethod):
         # predictor
         self.predictor = nn.Sequential(
             nn.Linear(proj_output_dim, pred_hidden_dim),
-            nn.BatchNorm1d(pred_hidden_dim),
+            # nn.BatchNorm1d(pred_hidden_dim),
             nn.ReLU(),
             nn.Linear(pred_hidden_dim, proj_output_dim),
+        )
+
+        self.style_projector = nn.Sequential(
+            nn.Linear(2*(64+128+256), proj_hidden_dim//2),
+            # nn.BatchNorm1d(proj_hidden_dim//2),
+            nn.ReLU(),
+            nn.Linear(proj_hidden_dim//2, proj_output_dim)
         )
 
     @staticmethod
@@ -124,7 +131,9 @@ class BYOL(BaseMomentumMethod):
         out = super().forward(X)
         z = self.projector(out["feats"])
         p = self.predictor(z)
-        out.update({"z": z, "p": p})
+        s = self.style_projector(reverse_grad(out["style_feats"]))
+        out.update({"z": z, "p": p, "s": s,})
+        
         return out
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
@@ -142,6 +151,7 @@ class BYOL(BaseMomentumMethod):
         z = self.projector(out["feats"])
         p = self.predictor(z)
         out.update({"z": z, "p": p})
+
         return out
 
     @torch.no_grad()
@@ -158,7 +168,9 @@ class BYOL(BaseMomentumMethod):
 
         out = super().momentum_forward(X)
         z = self.momentum_projector(out["feats"])
-        out.update({"z": z})
+        s = self.style_projector(reverse_grad(out["style_feats"]))
+        out.update({"z": z, "s": s,})
+        
         return out
 
     def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
@@ -178,6 +190,7 @@ class BYOL(BaseMomentumMethod):
         Z = out["z"]
         P = out["p"]
         Z_momentum = out["momentum_z"]
+        S = out["s"]
 
         # ------- negative consine similarity loss -------
         neg_cos_sim = 0
@@ -189,10 +202,17 @@ class BYOL(BaseMomentumMethod):
         with torch.no_grad():
             z_std = F.normalize(torch.stack(Z[: self.num_large_crops]), dim=-1).std(dim=1).mean()
 
+        style_loss= 0
+        alpha = 1
+        for v1 in range(self.num_large_crops):
+            for v2 in np.delete(range(self.num_crops), v1):
+                style_loss+= byol_loss_func(S[v1], Z_momentum[v2])
+
         metrics = {
             "train_neg_cos_sim": neg_cos_sim,
             "train_z_std": z_std,
+            "train_style_loss": alpha * style_loss,
         }
         self.log_dict(metrics, on_epoch=True, sync_dist=True)
 
-        return neg_cos_sim + class_loss
+        return neg_cos_sim + class_loss + alpha * style_loss

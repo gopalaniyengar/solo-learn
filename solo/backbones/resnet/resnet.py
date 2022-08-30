@@ -308,10 +308,18 @@ class ResNetCustom(ResNet):
 
 		return x, torch.cat((u1, s1, u2, s2, u3, s3), dim=1)
 
-def resnet18(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
+def resnet18_bn(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
+	model = ResNet(BasicBlock, [2,2,2,2], **kwargs)
+	return model
+
+def resnet50_bn(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
+	model = ResNet(Bottleneck, [3,4,6,3], **kwargs)
+	return model
+
+def resnet18_in(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
 	model = ResNetCustom(BasicBlockCustom, [2,2,2,2], **kwargs)
 	return model
 
-def resnet50(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
+def resnet50_in(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
 	model = ResNetCustom(BottleneckCustom, [3,4,6,3], **kwargs)
 	return model
