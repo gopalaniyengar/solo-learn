@@ -104,6 +104,7 @@ class BYOL(BaseMomentumMethod):
         extra_learnable_params = [
             {"params": self.projector.parameters()},
             {"params": self.predictor.parameters()},
+            {"params": self.style_projector.parameters()},
         ]
         return super().learnable_params + extra_learnable_params
 
