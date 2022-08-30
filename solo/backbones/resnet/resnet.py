@@ -100,7 +100,8 @@ class BasicBlock(nn.Module):
 
 class BasicBlockCustom(BasicBlock):
     def __init__(self, *args, **kwargs):
-        super(BasicBlockCustom, self).__init__(*args, norm_layer=nn.InstanceNorm2d, **kwargs)
+        super(BasicBlockCustom, self).__init__(*args, **kwargs)
+        self.norm_layer=nn.InstanceNorm2d
 
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
@@ -161,7 +162,8 @@ class Bottleneck(nn.Module):
 
 class BottleneckCustom(Bottleneck):
     def __init__(self, *args, **kwargs):
-        super(BottleneckCustom, self).__init__(*args, norm_layer=nn.InstanceNorm2d, **kwargs)
+        super(BottleneckCustom, self).__init__(*args, **kwargs)
+        self.norm_layer=nn.InstanceNorm2d
 
 class ResNet(nn.Module):
     def __init__(
@@ -305,8 +307,9 @@ class ResNet(nn.Module):
         return self._forward_impl_custom(x)
 
 class ResNetCustom(ResNet):
-	def __init__(self, *args, **kwargs):
-		super(ResNetCustom, self).__init__(*args, norm_layer=nn.InstanceNorm2d, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super(ResNetCustom, self).__init__(*args, **kwargs)
+        self.norm_layer = nn.InstanceNorm2d
 
 	def _forward_impl(self, x:Tensor) -> Tensor:
 		x = self.conv1(x)
