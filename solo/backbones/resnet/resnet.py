@@ -311,26 +311,26 @@ class ResNetCustom(ResNet):
         super(ResNetCustom, self).__init__(*args, **kwargs)
         self.norm_layer = nn.InstanceNorm2d
 
-	def _forward_impl(self, x:Tensor) -> Tensor:
-		x = self.conv1(x)
-		x = self.bn1(x)
-		x = self.relu(x)
-		x = self.maxpool(x)
+    def _forward_impl(self, x:Tensor) -> Tensor:
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
 
-		x = self.layer1(x)
-		u1, s1 = inst_style_feats(x)
-		x = self.layer2(x)
-		u2, s2 = inst_style_feats(x)
-		x = self.layer3(x)
-		u3, s3 = inst_style_feats(x)
-		x = self.layer4(x)
-		
+        x = self.layer1(x)
+        u1, s1 = inst_style_feats(x)
+        x = self.layer2(x)
+        u2, s2 = inst_style_feats(x)
+        x = self.layer3(x)
+        u3, s3 = inst_style_feats(x)
+        x = self.layer4(x)
 
-		x = self.avgpool(x)
-		x = torch.flatten(x, 1)
-		x = self.fc(x)
 
-		return x, torch.cat((u1, s1, u2, s2, u3, s3), dim=1)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+
+        return x, torch.cat((u1, s1, u2, s2, u3, s3), dim=1)
 
 def resnet18_bn(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
 	model = ResNet(BasicBlock, [2,2,2,2], **kwargs)
