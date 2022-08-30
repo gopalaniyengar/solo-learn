@@ -250,7 +250,7 @@ class BaseMethod(pl.LightningModule):
             kwargs["window_size"] = 4
 
         method = self.extra_args.get("method", None)
-        self.backbone = self.base_model(**kwargs)#(method, **kwargs)
+        self.backbone = self.base_model(method, **kwargs)
         if self.backbone_name.startswith("resnet"):
             self.features_dim = self.backbone.inplanes
             # remove fc layer
@@ -678,7 +678,7 @@ class BaseMomentumMethod(BaseMethod):
             kwargs["window_size"] = 4
 
         method = self.extra_args.get("method", None)
-        self.momentum_backbone = self.base_model(**kwargs)#(method, **kwargs)
+        self.momentum_backbone = self.base_model(method, **kwargs)
         if self.backbone_name.startswith("resnet"):
             # remove fc layer
             self.momentum_backbone.fc = nn.Identity()
