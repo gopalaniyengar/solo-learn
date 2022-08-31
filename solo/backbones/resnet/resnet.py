@@ -98,10 +98,10 @@ class BasicBlock(nn.Module):
 
         return out
 
-class BasicBlockCustom(BasicBlock):
-    def __init__(self, *args, **kwargs):
-        super(BasicBlockCustom, self).__init__(*args, **kwargs)
-        self.norm_layer=nn.InstanceNorm2d
+# class BasicBlockCustom(BasicBlock):
+#     def __init__(self, *args, **kwargs):
+#         super(BasicBlockCustom, self).__init__(*args, **kwargs)
+#         self.norm_layer=nn.InstanceNorm2d
 
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
@@ -160,10 +160,10 @@ class Bottleneck(nn.Module):
 
         return out
 
-class BottleneckCustom(Bottleneck):
-    def __init__(self, *args, **kwargs):
-        super(BottleneckCustom, self).__init__(*args, **kwargs)
-        self.norm_layer=nn.InstanceNorm2d
+# class BottleneckCustom(Bottleneck):
+#     def __init__(self, *args, **kwargs):
+#         super(BottleneckCustom, self).__init__(*args, **kwargs)
+#         self.norm_layer=nn.InstanceNorm2d
 
 class ResNet(nn.Module):
     def __init__(
@@ -308,8 +308,8 @@ class ResNet(nn.Module):
 
 class ResNetCustom(ResNet):
     def __init__(self, *args, **kwargs):
-        super(ResNetCustom, self).__init__(*args, **kwargs)
-        self._norm_layer = nn.InstanceNorm2d
+        super(ResNetCustom, self).__init__(norm_layer = nn.InstanceNorm2d, *args, **kwargs)
+        # self._norm_layer = nn.InstanceNorm2d
 
     def _forward_impl(self, x:Tensor) -> Tensor:
         x = self.conv1(x)
@@ -341,14 +341,16 @@ def resnet50_bn(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
 	return model
 
 def resnet18_in(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
-	model = ResNetCustom(BasicBlockCustom, [2,2,2,2], **kwargs)
+	model = ResNetCustom(BasicBlock, [2,2,2,2], **kwargs)
 	return model
 
 def resnet50_in(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
-	model = ResNetCustom(BottleneckCustom, [3,4,6,3], **kwargs)
+	model = ResNetCustom(Bottleneck, [3,4,6,3], **kwargs)
 	return model
 
 if __name__ == '__main__':
     from torchinfo import summary
     model = ResNetCustom(BasicBlock, [2,2,2,2])
+    summary(model)
+    model = ResNet(BasicBlock, [2,2,2,2])
     summary(model)
