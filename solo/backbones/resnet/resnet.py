@@ -196,7 +196,7 @@ class ResNet(nn.Module):
         self.groups = groups
         self.base_width = width_per_group
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-        self.bn1 = norm_layer(self.inplanes)
+        self.bn1 = self._norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0])
@@ -309,7 +309,7 @@ class ResNet(nn.Module):
 class ResNetCustom(ResNet):
     def __init__(self, *args, **kwargs):
         super(ResNetCustom, self).__init__(*args, **kwargs)
-        self.norm_layer = nn.InstanceNorm2d
+        self._norm_layer = nn.InstanceNorm2d
 
     def _forward_impl(self, x:Tensor) -> Tensor:
         x = self.conv1(x)
@@ -347,3 +347,8 @@ def resnet18_in(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
 def resnet50_in(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
 	model = ResNetCustom(BottleneckCustom, [3,4,6,3], **kwargs)
 	return model
+
+if __name__ == '__main__':
+    from torchinfo import summary
+    model = ResNetCustom(BasicBlock, [2,2,2,2])
+    summary(model)
