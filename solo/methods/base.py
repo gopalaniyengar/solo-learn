@@ -53,6 +53,8 @@ from solo.backbones import (
     resnet50_bn,
     resnet18_in,
     resnet50_in,
+    resnet18_bin,
+    resnet50_bin,
     wide_resnet28w2,
     wide_resnet28w8,
 )
@@ -78,6 +80,8 @@ class BaseMethod(pl.LightningModule):
         "resnet50_bn": resnet50_bn,
         "resnet18_in": resnet18_in,
         "resnet50_in": resnet50_in,
+        "resnet18_bin": resnet18_bin,
+        "resnet50_bin": resnet50_bin,
         "vit_tiny": vit_tiny,
         "vit_small": vit_small,
         "vit_base": vit_base,

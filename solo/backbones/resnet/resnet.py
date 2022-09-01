@@ -32,6 +32,7 @@ from functools import partial
 from typing import Type, Any, Callable, Union, List, Optional
 from torchvision.models.resnet import *
 import torch.nn as nn
+from ..binorm import BatchInstanceNorm2d
 
 """
 https://pytorch.org/vision/main/_modules/torchvision/models/resnet.html#resnet18
@@ -306,9 +307,9 @@ class ResNet(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl_custom(x)
 
-class ResNetCustom(ResNet):
+class ResNetIN(ResNet):
     def __init__(self, *args, **kwargs):
-        super(ResNetCustom, self).__init__(norm_layer = nn.InstanceNorm2d, *args, **kwargs)
+        super(ResNetIN, self).__init__(norm_layer = nn.InstanceNorm2d, *args, **kwargs)
         # self._norm_layer = nn.InstanceNorm2d
 
     def _forward_impl(self, x:Tensor) -> Tensor:
@@ -332,25 +333,61 @@ class ResNetCustom(ResNet):
 
         return x, torch.cat((u1, s1, u2, s2, u3, s3), dim=1)
 
-def resnet18_bn(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
+class ResNetBIN(ResNet):
+    def __init__(self, *args, **kwargs):
+        super(ResNetBIN, self).__init__(norm_layer = BatchInstanceNorm2d, *args, **kwargs)
+        # self._norm_layer = nn.InstanceNorm2d
+
+    def _forward_impl(self, x:Tensor) -> Tensor:
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        u1, s1 = inst_style_feats(x)
+        x = self.layer2(x)
+        u2, s2 = inst_style_feats(x)
+        x = self.layer3(x)
+        u3, s3 = inst_style_feats(x)
+        x = self.layer4(x)
+
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+
+        return x, torch.cat((u1, s1, u2, s2, u3, s3), dim=1)
+
+def resnet18_bn(*, progress: bool = True, **kwargs: Any) -> ResNet:
 	model = ResNet(BasicBlock, [2,2,2,2], **kwargs)
 	return model
 
-def resnet50_bn(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
+def resnet50_bn(*, progress: bool = True, **kwargs: Any) -> ResNet:
 	model = ResNet(Bottleneck, [3,4,6,3], **kwargs)
 	return model
 
-def resnet18_in(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
-	model = ResNetCustom(BasicBlock, [2,2,2,2], **kwargs)
+def resnet18_in(*, progress: bool = True, **kwargs: Any) -> ResNetIN:
+	model = ResNetIN(BasicBlock, [2,2,2,2], **kwargs)
 	return model
 
-def resnet50_in(*, progress: bool = True, **kwargs: Any) -> ResNetCustom:
-	model = ResNetCustom(Bottleneck, [3,4,6,3], **kwargs)
+def resnet50_in(*, progress: bool = True, **kwargs: Any) -> ResNetIN:
+	model = ResNetIN(Bottleneck, [3,4,6,3], **kwargs)
+	return model
+
+def resnet18_bin(*, progress: bool = True, **kwargs: Any) -> ResNetIN:
+	model = ResNetBIN(BasicBlock, [2,2,2,2], **kwargs)
+	return model
+
+def resnet50_bin(*, progress: bool = True, **kwargs: Any) -> ResNetIN:
+	model = ResNetBIN(Bottleneck, [3,4,6,3], **kwargs)
 	return model
 
 if __name__ == '__main__':
     from torchinfo import summary
-    model = ResNetCustom(BasicBlock, [2,2,2,2])
+    model = ResNetBIN(BasicBlock, [2,2,2,2])
+    summary(model)
+    model = ResNetIN(BasicBlock, [2,2,2,2])
     summary(model)
     model = ResNet(BasicBlock, [2,2,2,2])
     summary(model)

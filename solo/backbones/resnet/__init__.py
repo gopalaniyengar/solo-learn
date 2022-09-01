@@ -23,6 +23,8 @@ from .resnet import resnet50_bn as default_resnet50
 from .resnet import resnet18_in as custom_resnet18
 from .resnet import resnet50_in as custom_resnet50
 
+from .resnet import resnet18_bin as custombin_resnet18
+from .resnet import resnet50_bin as custombin_resnet50
 
 def resnet18_bn(method, *args, **kwargs):
     return default_resnet18(*args, **kwargs)
@@ -36,4 +38,11 @@ def resnet18_in(method, *args, **kwargs):
 def resnet50_in(method, *args, **kwargs):
     return custom_resnet50(*args, **kwargs)
 
-__all__ = ["resnet18_in", "resnet50_in", "resnet18_bn", "resnet50_bn"]
+def resnet18_bin(method, *args, **kwargs):
+    return custombin_resnet18(*args, **kwargs)
+
+def resnet50_bin(method, *args, **kwargs):
+    return custombin_resnet50(*args, **kwargs)
+
+
+__all__ = ["resnet18_bin", "resnet50_bin", "resnet18_in", "resnet50_in", "resnet18_bn", "resnet50_bn"]
