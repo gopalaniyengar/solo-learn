@@ -32,7 +32,7 @@ from functools import partial
 from typing import Type, Any, Callable, Union, List, Optional
 from torchvision.models.resnet import *
 import torch.nn as nn
-from .binorm import BatchInstanceNorm2d
+from binorm import BatchInstanceNorm2d
 
 """
 https://pytorch.org/vision/main/_modules/torchvision/models/resnet.html#resnet18
