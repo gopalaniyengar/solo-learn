@@ -32,7 +32,7 @@ from functools import partial
 from typing import Type, Any, Callable, Union, List, Optional
 from torchvision.models.resnet import *
 import torch.nn as nn
-from binorm import BatchInstanceNorm2d
+from .binorm import BatchInstanceNorm2d
 
 """
 https://pytorch.org/vision/main/_modules/torchvision/models/resnet.html#resnet18
@@ -385,6 +385,8 @@ def resnet50_bin(*, progress: bool = True, **kwargs: Any) -> ResNetIN:
 
 if __name__ == '__main__':
     from torchinfo import summary
+    from binorm import BatchInstanceNorm2d
+
     model = ResNetBIN(BasicBlock, [2,2,2,2])
     summary(model)
     model = ResNetIN(BasicBlock, [2,2,2,2])
