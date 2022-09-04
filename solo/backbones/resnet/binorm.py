@@ -28,11 +28,11 @@ class _BatchInstanceNorm(_BatchNorm):
             in_w = self.weight * (1 - self.gate)
         else:
             in_w = 1 - self.gate
-        input = input.view(1, b * c, *input.size()[2:])
+        input = input.reshape(1, b * c, *input.size()[2:])
         out_in = F.batch_norm(
             input, None, None, None, None,
             True, self.momentum, self.eps)
-        out_in = out_in.view(b, c, *input.size()[2:])
+        out_in = out_in.reshape(b, c, *input.size()[2:])
         out_in.mul_(in_w[None, :, None, None])
 
         return out_bn + out_in
