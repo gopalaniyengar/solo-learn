@@ -132,7 +132,7 @@ class BYOL(BaseMomentumMethod):
         out = super().forward(X)
         z = self.projector(out["feats"])
         p = self.predictor(z)
-        s = self.style_projector(reverse_grad(out["style_feats"], lambd=0.01))
+        s = self.style_projector(reverse_grad(out["style_feats"].detach(), lambd=0.01))
         out.update({"z": z, "p": p, "s": s,})
         
         return out
@@ -169,7 +169,7 @@ class BYOL(BaseMomentumMethod):
 
         out = super().momentum_forward(X)
         z = self.momentum_projector(out["feats"])
-        s = self.style_projector(reverse_grad(out["style_feats"], lambd=0.01))
+        s = self.style_projector(reverse_grad(out["style_feats"].detach(), lambd=0.01))
         out.update({"z": z, "s": s,})
         
         return out
