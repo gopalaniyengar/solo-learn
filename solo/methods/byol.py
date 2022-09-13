@@ -72,8 +72,15 @@ class BYOL(BaseMomentumMethod):
             nn.Linear(pred_hidden_dim, proj_output_dim),
         )
 
+        # self.style_projector = nn.Sequential(
+        #     nn.Linear(2*(64+128+256), proj_hidden_dim//2),
+        #     # nn.BatchNorm1d(proj_hidden_dim//2),
+        #     nn.ReLU(),
+        #     nn.Linear(proj_hidden_dim//2, proj_output_dim)
+        # )
+
         self.style_projector = nn.Sequential(
-            nn.Linear(2*(64+128+256), proj_hidden_dim//2),
+            nn.Linear(2*(512), proj_hidden_dim//2),
             # nn.BatchNorm1d(proj_hidden_dim//2),
             nn.ReLU(),
             nn.Linear(proj_hidden_dim//2, proj_output_dim)
@@ -132,7 +139,7 @@ class BYOL(BaseMomentumMethod):
         out = super().forward(X)
         z = self.projector(out["feats"])
         p = self.predictor(z)
-        s = self.style_projector(reverse_grad(out["style_feats"].detach(), lambd=0.01))
+        s = self.style_projector(reverse_grad(out["style_feats"], lambd=0.1))
         out.update({"z": z, "p": p, "s": s,})
         
         return out
@@ -169,7 +176,7 @@ class BYOL(BaseMomentumMethod):
 
         out = super().momentum_forward(X)
         z = self.momentum_projector(out["feats"])
-        s = self.style_projector(reverse_grad(out["style_feats"].detach(), lambd=0.01))
+        s = self.style_projector(reverse_grad(out["style_feats"], lambd=0.1))
         out.update({"z": z, "s": s,})
         
         return out
@@ -202,6 +209,7 @@ class BYOL(BaseMomentumMethod):
         # calculate std of features
         with torch.no_grad():
             z_std = F.normalize(torch.stack(Z[: self.num_large_crops]), dim=-1).std(dim=1).mean()
+            s_std = F.normalize(torch.stack(S[: self.num_large_crops]), dim=-1).std(dim=1).mean()
 
         style_loss= 0
         alpha = 1
@@ -210,9 +218,10 @@ class BYOL(BaseMomentumMethod):
                 style_loss+= byol_loss_func(S[v1], Z_momentum[v2])
 
         metrics = {
-            "train_neg_cos_sim": neg_cos_sim,
+            "train_ssl_loss": neg_cos_sim,
+            "train_style_loss": alpha * style_loss, 
             "train_z_std": z_std,
-            "train_style_loss": alpha * style_loss,
+            "train_s_std": s_std,
         }
         self.log_dict(metrics, on_epoch=True, sync_dist=True)
 

@@ -304,8 +304,26 @@ class ResNet(nn.Module):
 
         return x, torch.cat((u1, s1, u2, s2, u3, s3), dim=1)
 
+    def _forward_impl_custom_new(self, x:Tensor) -> Tensor:
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        u, s = inst_style_feats(x)
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+
+        return x, torch.cat((u, s), dim=1)
+
     def forward(self, x: Tensor) -> Tensor:
-        return self._forward_impl_custom(x)
+        return self._forward_impl_custom_new(x)
 
 class ResNetIN(ResNet):
     def __init__(self, *args, **kwargs):
