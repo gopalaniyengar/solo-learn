@@ -222,6 +222,7 @@ class BYOL(BaseMomentumMethod):
                 style_loss+= byol_loss_func(S[v1], Z_momentum[v2])
 
         metrics = {
+            "style_loss_coeff": alpha,
             "train_ssl_loss": neg_cos_sim,
             "train_style_loss": alpha * style_loss, 
             "train_z_std": z_std,
