@@ -98,6 +98,8 @@ class BYOL(BaseMomentumMethod):
         # predictor
         parser.add_argument("--pred_hidden_dim", type=int, default=512)
 
+        # style loss annealing
+        parser.add_argument("--style_coef_exp", type=int, default=2)
         return parent_parser
 
     @property
@@ -139,7 +141,7 @@ class BYOL(BaseMomentumMethod):
         out = super().forward(X)
         z = self.projector(out["feats"])
         p = self.predictor(z)
-        s = self.style_projector(reverse_grad(out["style_feats"], lambd=0.1))
+        s = self.style_projector(reverse_grad(out["style_feats"], lambd=1))
         out.update({"z": z, "p": p, "s": s,})
         
         return out
@@ -176,7 +178,7 @@ class BYOL(BaseMomentumMethod):
 
         out = super().momentum_forward(X)
         z = self.momentum_projector(out["feats"])
-        s = self.style_projector(reverse_grad(out["style_feats"], lambd=0.1))
+        s = self.style_projector(reverse_grad(out["style_feats"], lambd=1))
         out.update({"z": z, "s": s,})
         
         return out
@@ -212,7 +214,9 @@ class BYOL(BaseMomentumMethod):
             s_std = F.normalize(torch.stack(S[: self.num_large_crops]), dim=-1).std(dim=1).mean()
 
         style_loss= 0
-        alpha = 1
+        alpha_exp = self.style_coef_exp
+        alpha = (self.current_epoch/self.max_epochs)**alpha_exp
+
         for v1 in range(self.num_large_crops):
             for v2 in np.delete(range(self.num_crops), v1):
                 style_loss+= byol_loss_func(S[v1], Z_momentum[v2])
