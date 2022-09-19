@@ -211,8 +211,10 @@ class BYOL(BaseMomentumMethod):
             z_std = F.normalize(torch.stack(Z[: self.num_large_crops]), dim=-1).std(dim=1).mean()
             s_std = F.normalize(torch.stack(S[: self.num_large_crops]), dim=-1).std(dim=1).mean()
 
-        style_loss= 0
-        alpha = 1
+        style_loss = 0
+        style_exp = 3
+        alpha = (self.current_epoch/self.max_epochs)**style_exp
+
         for v1 in range(self.num_large_crops):
             for v2 in np.delete(range(self.num_crops), v1):
                 style_loss+= byol_loss_func(S[v1], Z_momentum[v2])
