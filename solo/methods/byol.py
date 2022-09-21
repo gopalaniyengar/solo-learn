@@ -200,6 +200,8 @@ class BYOL(BaseMomentumMethod):
         Z_momentum = out["momentum_z"]
         S = out["s"]
 
+        # print(S.grad)
+
         # ------- negative consine similarity loss -------
         neg_cos_sim = 0
         for v1 in range(self.num_large_crops):
@@ -228,4 +230,8 @@ class BYOL(BaseMomentumMethod):
         }
         self.log_dict(metrics, on_epoch=True, sync_dist=True)
 
+        # print(self.style_projector.weight.grad)
+        # print(self.backbone.weight)
+
+        return alpha * style_loss
         return neg_cos_sim + class_loss + alpha * style_loss
