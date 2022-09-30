@@ -212,7 +212,7 @@ class BYOL(BaseMomentumMethod):
             s_std = F.normalize(torch.stack(S[: self.num_large_crops]), dim=-1).std(dim=1).mean()
 
         style_loss = 0
-        style_exp = 3
+        style_exp = 0
         alpha = (self.current_epoch/self.max_epochs)**style_exp
 
         for v1 in range(self.num_large_crops):

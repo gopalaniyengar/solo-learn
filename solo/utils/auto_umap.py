@@ -181,9 +181,9 @@ class AutoUMAP(Callback):
         for idxx, data in enumerate([bb_feats, bb_style_feats, style_proj_feats, cont_proj_feats]):
             if trainer.is_global_zero and len(data):
                 data = torch.cat(data, dim=0).numpy()
-                Y = torch.cat(Y, dim=0)
-                num_classes = len(torch.unique(Y))
-                Y = Y.numpy()
+                dY = torch.cat(Y, dim=0)
+                num_classes = len(torch.unique(dY))
+                dY = dY.numpy()
 
                 data = umap.UMAP(n_components=2).fit_transform(data)
 
@@ -191,7 +191,7 @@ class AutoUMAP(Callback):
                 df = pd.DataFrame()
                 df["feat_1"] = data[:, 0]
                 df["feat_2"] = data[:, 1]
-                df["Y"] = Y
+                df["Y"] = dY
                 plt.figure(figsize=(16, 9))
                 ax = sns.scatterplot(
                     x="feat_1",
