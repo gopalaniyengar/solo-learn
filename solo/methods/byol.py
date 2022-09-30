@@ -73,17 +73,17 @@ class BYOL(BaseMomentumMethod):
         )
 
         # self.style_projector = nn.Sequential(
-        #     nn.Linear(2*(64+128+256), proj_hidden_dim//2),
+        #     nn.Linear(2*(512), proj_hidden_dim//2),
         #     # nn.BatchNorm1d(proj_hidden_dim//2),
         #     nn.ReLU(),
         #     nn.Linear(proj_hidden_dim//2, proj_output_dim)
         # )
 
-        self.style_projector = nn.Sequential(
-            nn.Linear(2*(512), proj_hidden_dim//2),
-            # nn.BatchNorm1d(proj_hidden_dim//2),
+        self.style_discrim = nn.Sequential(
+            nn.Linear(self.features_dim, proj_hidden_dim),
+            # nn.BatchNorm1d(proj_hidden_dim),
             nn.ReLU(),
-            nn.Linear(proj_hidden_dim//2, proj_output_dim)
+            nn.Linear(proj_hidden_dim, 4),
         )
 
     @staticmethod
@@ -111,8 +111,9 @@ class BYOL(BaseMomentumMethod):
         extra_learnable_params = [
             {"params": self.projector.parameters()},
             {"params": self.predictor.parameters()},
-            {"params": self.style_projector.parameters()},
+            {"params": self.style_discrim.parameters()},
         ]
+        # {"params": self.style_projector.parameters()},
         return super().learnable_params + extra_learnable_params
 
     @property
@@ -139,8 +140,8 @@ class BYOL(BaseMomentumMethod):
         out = super().forward(X)
         z = self.projector(out["feats"])
         p = self.predictor(z)
-        s = self.style_projector(reverse_grad(out["style_feats"]))
-        out.update({"z": z, "p": p, "s": s,})
+        # s = self.style_projector(reverse_grad(out["style_feats"]))
+        # out.update({"z": z, "p": p, "s": s,})
         
         return out
 
@@ -176,8 +177,8 @@ class BYOL(BaseMomentumMethod):
 
         out = super().momentum_forward(X)
         z = self.momentum_projector(out["feats"])
-        s = self.style_projector(reverse_grad(out["style_feats"]))
-        out.update({"z": z, "s": s,})
+        # s = self.style_projector(reverse_grad(out["style_feats"]))
+        # out.update({"z": z, "s": s,})
         
         return out
 

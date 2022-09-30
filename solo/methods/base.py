@@ -470,9 +470,12 @@ class BaseMethod(pl.LightningModule):
 
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
-        feats, inst_norm_feats = self.backbone(X)
+        feats, style_feats = self.backbone(X)
         logits = self.classifier(feats.detach())
-        return {"logits": logits, "feats": feats, "style_feats": inst_norm_feats}
+        
+        if style_feats is not None:
+            return {"logits": logits, "feats": feats, "style_feats": style_feats}
+        return {"logits": logits, "feats": feats}
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Basic multicrop forward method that performs the forward pass
@@ -778,9 +781,12 @@ class BaseMomentumMethod(BaseMethod):
 
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
-        feats, inst_norm_feats = self.momentum_backbone(X)
-        return {"feats": feats, "style_feats": inst_norm_feats}
-
+        feats, style_feats = self.momentum_backbone(X)
+        
+        if style_feats is not None:
+            return {"feats": feats, "style_feats": style_feats}
+        return {"feats": feats}
+        
     def _shared_step_momentum(self, X: torch.Tensor, targets: torch.Tensor) -> Dict[str, Any]:
         """Forwards a batch of images X in the momentum backbone and optionally computes the
         classification loss, the logits, the features, acc@1 and acc@5 for of momentum classifier.
