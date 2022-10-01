@@ -24,7 +24,7 @@ import string
 import time
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import pandas as pd
 import pytorch_lightning as pl
@@ -175,7 +175,7 @@ class AutoUMAP(Callback):
 
         module.train()
         umap_keys = ['backbone_features','style_features','style_projections','content_projections']
-        palettes  = ['hls', 'icefire', 'viridis', 'Paired']
+        palettes  = ['hls', 'hls', 'hls', 'hls']
         sns.set_palette("dark")
 
         for idxx, data in enumerate([bb_feats, bb_style_feats, style_proj_feats, cont_proj_feats]):
@@ -333,3 +333,61 @@ class OfflineUMAP:
         self.subplot(data, Y, num_classes, plot_path, suffix='_resfeats.pdf')
         self.subplot(inst_data, Y, num_classes, plot_path, suffix='_instnorm.pdf')
     
+    def plot_projections(
+        self,
+        device: str,
+        models: List[nn.Module,nn.Module,nn.Module],
+        dataloader: torch.utils.data.DataLoader,
+        plot_path: str,
+    ):
+
+        backbone = models[0]
+        content_proj, style_proj = models[1], models[2]
+        data = []
+        inst_data = []
+        st_proj = []
+        cnt_proj = []
+        Y = []
+
+        # set module to eval model and collect all feature representations
+        backbone.eval()
+        content_proj.eval()
+        style_proj.eval()
+
+        with torch.no_grad():
+            for x, y in tqdm(dataloader, desc="Collecting features"):
+                x = x.to(device, non_blocking=True)
+                y = y.to(device, non_blocking=True)
+
+                feats, inst_feats = backbone(x)
+                style_projections = style_proj(inst_feats)
+                content_projections = content_proj(feats)
+
+                data.append(feats.cpu())
+                inst_data.append(inst_feats.cpu())
+                st_proj.append(style_projections.cpu())
+                cnt_proj.append(content_projections.cpu())
+                Y.append(y.cpu())
+
+        backbone.train()
+        content_proj.train()
+        style_proj.train()
+
+        data = torch.cat(data, dim=0).numpy()
+        inst_data = torch.cat(inst_data, dim=0).numpy()
+        st_proj = torch.cat(st_proj, dim=0).numpy()
+        cnt_proj = torch.cat(cnt_proj, dim=0).numpy()
+        Y = torch.cat(Y, dim=0)
+        num_classes = len(torch.unique(Y))
+        Y = Y.numpy()
+
+        print("Creating UMAP...")
+        data = umap.UMAP(n_components=2).fit_transform(data)
+        inst_data = umap.UMAP(n_components=2).fit_transform(inst_data) 
+        st_proj = umap.UMAP(n_components=2).fit_transform(st_proj) 
+        cnt_proj = umap.UMAP(n_components=2).fit_transform(cnt_proj) 
+
+        self.subplot(data, Y, num_classes, plot_path, suffix='_bb_feats.pdf')
+        self.subplot(inst_data, Y, num_classes, plot_path, suffix='_bb_style_feats.pdf')
+        self.subplot(st_proj, Y, num_classes, plot_path, suffix='_style_projection.pdf')
+        self.subplot(cnt_proj, Y, num_classes, plot_path, suffix='_content_projection.pdf')

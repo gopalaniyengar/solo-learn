@@ -25,7 +25,7 @@ from solo.args.setup import parse_args_umap
 from solo.methods import METHODS
 from solo.utils.auto_umap import OfflineUMAP
 from solo.data.classification_dataloader import prepare_data
-
+from solo.backbones.resnet import inst_style_feats
 
 def main():
     args = parse_args_umap()
@@ -39,14 +39,6 @@ def main():
     with open(args_path) as f:
         method_args = json.load(f)
 
-    # build the model
-    model = (
-        METHODS[method_args["method"]]
-        .load_from_checkpoint(ckpt_path, strict=False, **method_args)
-        .backbone
-    )
-    model.cuda()
-
     # prepare data
     train_loader, val_loader = prepare_data(
         args.dataset,
@@ -56,14 +48,28 @@ def main():
         num_workers=args.num_workers,
     )
 
-    umap = OfflineUMAP()
+    # build the model
+    checkpoint = METHODS[method_args["method"]].load_from_checkpoint(ckpt_path, strict=False, **method_args)
+    model = (checkpoint.backbone)
+    style_proj = model = (checkpoint.style_projector)
+    cont_proj = model = (checkpoint.projector)
 
     # move model to the gpu
     device = "cuda:0"
-    model = model.to(device)
 
-    umap.plot(device, model, train_loader, "/content/drive/MyDrive/BTP/UMAPs/train")
-    umap.plot(device, model, val_loader, "/content/drive/MyDrive/BTP/UMAPs/val")
+    model.cuda()
+    style_proj.cuda()
+    cont_proj.cuda()
+
+    model = model.to(device)
+    style_proj = style_proj.to(device)
+    cont_proj = cont_proj.to(device)
+
+    umap = OfflineUMAP()
+    # umap.plot(device, model, train_loader, "/content/drive/MyDrive/BTP/UMAPs/train")
+    # umap.plot(device, model, val_loader, "/content/drive/MyDrive/BTP/UMAPs/val")
+    umap.plot_projections(device, [model, cont_proj, style_proj], train_loader, "/content/drive/MyDrive/BTP/Projection_UMAPs/train")
+    umap.plot_projections(device, [model, cont_proj, style_proj], val_loader, "/content/drive/MyDrive/BTP/Projection_UMAPs/val")
 
 if __name__ == "__main__":
     main()
