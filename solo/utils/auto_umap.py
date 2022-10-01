@@ -336,7 +336,7 @@ class OfflineUMAP:
     def plot_projections(
         self,
         device: str,
-        models: List[nn.Module,nn.Module,nn.Module],
+        models: List[nn.Module],
         dataloader: torch.utils.data.DataLoader,
         plot_path: str,
     ):

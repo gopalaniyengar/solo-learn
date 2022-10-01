@@ -25,7 +25,6 @@ from solo.args.setup import parse_args_umap
 from solo.methods import METHODS
 from solo.utils.auto_umap import OfflineUMAP
 from solo.data.classification_dataloader import prepare_data
-from solo.backbones.resnet import inst_style_feats
 
 def main():
     args = parse_args_umap()
