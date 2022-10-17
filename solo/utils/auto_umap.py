@@ -57,6 +57,7 @@ class AutoUMAP(Callback):
         frequency: int = 1,
         keep_previous: bool = False,
         color_palette: str = "hls",
+        discrim: bool = False
     ):
         """UMAP callback that automatically runs UMAP on the validation dataset and uploads the
         figure to wandb.
@@ -78,6 +79,7 @@ class AutoUMAP(Callback):
         self.frequency = frequency
         self.color_palette = color_palette
         self.keep_previous = keep_previous
+        self.discrim = discrim
 
     @staticmethod
     def add_auto_umap_args(parent_parser: ArgumentParser):
@@ -174,11 +176,16 @@ class AutoUMAP(Callback):
                 Y.append(y.cpu())
 
         module.train()
-        umap_keys = ['backbone_features','style_features','style_projections','content_projections']
+        if self.discrim:
+            umap_keys = ['backbone_features','style_features','content_projections']
+            umap_data = [bb_feats, bb_style_feats, cont_proj_feats]
+        else:
+            umap_keys = ['backbone_features','style_features','style_projections','content_projections']
+            umap_data = [bb_feats, bb_style_feats, style_proj_feats, cont_proj_feats]
         palettes  = ['hls', 'hls', 'hls', 'hls']
         sns.set_palette("dark")
 
-        for idxx, data in enumerate([bb_feats, bb_style_feats, style_proj_feats, cont_proj_feats]):
+        for idxx, data in enumerate(umap_data):
             if trainer.is_global_zero and len(data):
                 data = torch.cat(data, dim=0).numpy()
                 dY = torch.cat(Y, dim=0)

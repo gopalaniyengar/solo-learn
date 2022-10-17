@@ -171,6 +171,7 @@ def main():
             args,
             logdir=os.path.join(args.auto_umap_dir, args.method),
             frequency=args.auto_umap_frequency,
+            discrim=True
         )
         callbacks.append(auto_umap)
 

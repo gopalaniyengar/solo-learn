@@ -40,3 +40,17 @@ def byol_loss_func(p: torch.Tensor, z: torch.Tensor, simplified: bool = True) ->
     z = F.normalize(z, dim=-1)
 
     return 2 - 2 * (p * z.detach()).sum(dim=1).mean()
+
+def byol_discrim_loss(s: torch.Tensor, num_domains = 4) -> torch.Tensor:
+    """Computes BYOL's style loss given batch of discriminators predicted logits s and num_domains.
+
+    Args:
+        s (torch.Tensor): N x num_domains Tensor containing predicted logits from style discriminator
+
+    Returns:
+        torch.Tensor: BYOL's style loss.
+    """
+
+    target = torch.ones_like(s)/num_domains
+    loss = F.cross_entropy(s, target)
+    return loss

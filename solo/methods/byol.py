@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from solo.losses.byol import byol_loss_func
+from solo.losses.byol import byol_loss_func, byol_discrim_loss
 from solo.methods.base import BaseMomentumMethod
 from solo.utils.momentum import initialize_momentum_params
 from solo.utils.grl import reverse_grad
@@ -79,11 +79,20 @@ class BYOL(BaseMomentumMethod):
         #     nn.Linear(proj_hidden_dim//2, proj_output_dim)
         # )
 
-        self.style_projector = nn.Sequential(
+        # self.style_projector = nn.Sequential(
+        #     nn.Linear(2*(512), proj_hidden_dim//2),
+        #     # nn.BatchNorm1d(proj_hidden_dim//2),
+        #     nn.ReLU(),
+        #     nn.Linear(proj_hidden_dim//2, proj_output_dim)
+        # )
+
+        self.style_disc = nn.Sequential(
             nn.Linear(2*(512), proj_hidden_dim//2),
             # nn.BatchNorm1d(proj_hidden_dim//2),
             nn.ReLU(),
-            nn.Linear(proj_hidden_dim//2, proj_output_dim)
+            nn.Linear(proj_hidden_dim//2, proj_output_dim//4),
+            nn.ReLU(),
+            nn.Linear(proj_hidden_dim//4, 4)
         )
 
     @staticmethod
@@ -111,7 +120,7 @@ class BYOL(BaseMomentumMethod):
         extra_learnable_params = [
             {"params": self.projector.parameters()},
             {"params": self.predictor.parameters()},
-            {"params": self.style_projector.parameters()},
+            {"params": self.style_disc.parameters()},
         ]
         return super().learnable_params + extra_learnable_params
 
@@ -139,7 +148,8 @@ class BYOL(BaseMomentumMethod):
         out = super().forward(X)
         z = self.projector(out["feats"])
         p = self.predictor(z)
-        s = self.style_projector(reverse_grad(out["style_feats"]))
+        s = self.style_disc((out["style_feats"]))
+        # s = self.style_disc(reverse_grad(out["style_feats"]))
         out.update({"z": z, "p": p, "s": s,})
         
         return out
@@ -176,7 +186,8 @@ class BYOL(BaseMomentumMethod):
 
         out = super().momentum_forward(X)
         z = self.momentum_projector(out["feats"])
-        s = self.style_projector(reverse_grad(out["style_feats"]))
+        s = self.style_disc((out["style_feats"]))
+        # s = self.style_disc(reverse_grad(out["style_feats"]))
         out.update({"z": z, "s": s,})
         
         return out
@@ -217,12 +228,13 @@ class BYOL(BaseMomentumMethod):
 
         for v1 in range(self.num_large_crops):
             for v2 in np.delete(range(self.num_crops), v1):
-                style_loss+= byol_loss_func(S[v1], Z_momentum[v2])
+                # style_loss += byol_loss_func(S[v1], Z_momentum[v2])
+                style_loss += byol_discrim_loss(S[v1])
 
         metrics = {
             "style_loss_coeff": alpha,
             "train_ssl_loss": neg_cos_sim,
-            "train_style_loss": alpha * style_loss, 
+            "train_style_loss": style_loss, 
             "train_z_std": z_std,
             "train_s_std": s_std,
         }
