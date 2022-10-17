@@ -24,10 +24,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from functools import partial
 from solo.losses.byol import byol_loss_func
-from solo.methods.base import BaseMomentumMethod
+from solo.methods.base import BaseMomentumMethod, static_lr
 from solo.utils.momentum import initialize_momentum_params
+from solo.utils.misc import remove_bias_and_norm_from_weight_decay
 from solo.utils.grl import reverse_grad
+from solo.utils.lars import LARS
+from solo.utils.metrics import accuracy_at_k, weighted_mean
+from solo.utils.misc import remove_bias_and_norm_from_weight_decay
+from solo.utils.momentum import MomentumUpdater, initialize_momentum_params
+from torch.optim.lr_scheduler import MultiStepLR
+from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 
 class BYOL(BaseMomentumMethod):
     def __init__(
@@ -109,12 +117,99 @@ class BYOL(BaseMomentumMethod):
         """
 
         extra_learnable_params = [
-            {"params": self.projector.parameters()},
-            {"params": self.predictor.parameters()},
-            {"params": self.style_discrim.parameters()},
+            {"name": "content projector", "params": self.projector.parameters()},
+            {"name": "predictor", "params": self.predictor.parameters()},
+            {"name": "style discriminator", "params": self.style_discrim.parameters()},
         ]
         # {"params": self.style_projector.parameters()},
         return super().learnable_params + extra_learnable_params
+    
+    def configure_optimizers(self) -> Tuple[List, List]:
+        """Collects learnable parameters and configures the optimizer and learning rate scheduler.
+
+        Returns:
+            Tuple[List, List]: two lists containing the optimizer and the scheduler.
+        """
+
+        learnable_params = self.learnable_params
+
+        # exclude bias and norm from weight decay
+        if self.extra_args.get("exclude_bias_n_norm_wd", False):
+            learnable_params = remove_bias_and_norm_from_weight_decay(learnable_params)
+
+        # indexes of parameters without lr scheduler
+        idxs_no_scheduler = [i for i, m in enumerate(learnable_params) if m.pop("static_lr", False)]
+
+        assert self.optimizer in self._OPTIMIZERS
+        optimizer = self._OPTIMIZERS[self.optimizer]
+
+        # create optimizers
+        optimizer_ssl = optimizer(
+            learnable_params[0:-1],
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+            **self.extra_optimizer_args,
+        )
+
+        optimizer_style = optimizer(
+            learnable_params[-1],
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+            **self.extra_optimizer_args,
+        )
+
+        for idxx, optimizer in enumerate([optimizer_ssl, optimizer_style]):
+            
+            if self.scheduler.lower() == "none" and idxx == 1:
+                return [optimizer_ssl, optimizer_style]
+
+            if self.scheduler == "warmup_cosine":
+                max_warmup_steps = (
+                    self.warmup_epochs * (self.trainer.estimated_stepping_batches / self.max_epochs)
+                    if self.scheduler_interval == "step"
+                    else self.warmup_epochs
+                )
+                max_scheduler_steps = (
+                    self.trainer.estimated_stepping_batches
+                    if self.scheduler_interval == "step"
+                    else self.max_epochs
+                )
+                scheduler = {
+                    "scheduler": LinearWarmupCosineAnnealingLR(
+                        optimizer,
+                        warmup_epochs=max_warmup_steps,
+                        max_epochs=max_scheduler_steps,
+                        warmup_start_lr=self.warmup_start_lr if self.warmup_epochs > 0 else self.lr,
+                        eta_min=self.min_lr,
+                    ),
+                    "interval": self.scheduler_interval,
+                    "frequency": 1,
+                }
+            elif self.scheduler == "step":
+                scheduler = MultiStepLR(optimizer, self.lr_decay_steps)
+            else:
+                raise ValueError(f"{self.scheduler} not in (warmup_cosine, cosine, step)")
+
+            if idxs_no_scheduler:
+                partial_fn = partial(
+                    static_lr,
+                    get_lr=scheduler["scheduler"].get_lr
+                    if isinstance(scheduler, dict)
+                    else scheduler.get_lr,
+                    param_group_indexes=idxs_no_scheduler,
+                    lrs_to_replace=[self.lr] * len(idxs_no_scheduler),
+                )
+                if isinstance(scheduler, dict):
+                    scheduler["scheduler"].get_lr = partial_fn
+                else:
+                    scheduler.get_lr = partial_fn
+            
+            if idxx==0:
+                scheduler_ssl = scheduler
+            else:
+                scheduler_style = scheduler
+        
+        return [optimizer_ssl, optimizer_style], [scheduler_ssl, scheduler_style]
 
     @property
     def momentum_pairs(self) -> List[Tuple[Any, Any]]:
