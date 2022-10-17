@@ -90,7 +90,7 @@ class BYOL(BaseMomentumMethod):
             nn.Linear(2*(512), proj_hidden_dim//2),
             # nn.BatchNorm1d(proj_hidden_dim//2),
             nn.ReLU(),
-            nn.Linear(proj_hidden_dim//2, proj_output_dim//4),
+            nn.Linear(proj_hidden_dim//2, proj_hidden_dim//4),
             nn.ReLU(),
             nn.Linear(proj_hidden_dim//4, 4)
         )
