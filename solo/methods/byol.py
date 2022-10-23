@@ -17,40 +17,39 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import argparse
 from typing import Any, Dict, List, Sequence, Tuple
 
+import numpy as np
+import omegaconf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from solo.losses.byol import byol_loss_func, byol_discrim_loss
+from solo.losses.byol import byol_loss_func
 from solo.methods.base import BaseMomentumMethod
 from solo.utils.momentum import initialize_momentum_params
-from solo.utils.grl import reverse_grad
+
 
 class BYOL(BaseMomentumMethod):
-    def __init__(
-        self,
-        proj_output_dim: int,
-        proj_hidden_dim: int,
-        pred_hidden_dim: int,
-        **kwargs,
-    ):
+    def __init__(self, cfg: omegaconf.DictConfig):
         """Implements BYOL (https://arxiv.org/abs/2006.07733).
 
-        Args:
-            proj_output_dim (int): number of dimensions of projected features.
-            proj_hidden_dim (int): number of neurons of the hidden layers of the projector.
-            pred_hidden_dim (int): number of neurons of the hidden layers of the predictor.
+        Extra cfg settings:
+            method_kwargs:
+                proj_output_dim (int): number of dimensions of projected features.
+                proj_hidden_dim (int): number of neurons of the hidden layers of the projector.
+                pred_hidden_dim (int): number of neurons of the hidden layers of the predictor.
         """
 
-        super().__init__(**kwargs)
+        super().__init__(cfg)
+
+        proj_hidden_dim: int = cfg.method_kwargs.proj_hidden_dim
+        proj_output_dim: int = cfg.method_kwargs.proj_output_dim
+        pred_hidden_dim: int = cfg.method_kwargs.pred_hidden_dim
 
         # projector
         self.projector = nn.Sequential(
             nn.Linear(self.features_dim, proj_hidden_dim),
-            # nn.BatchNorm1d(proj_hidden_dim),
+            nn.BatchNorm1d(proj_hidden_dim),
             nn.ReLU(),
             nn.Linear(proj_hidden_dim, proj_output_dim),
         )
@@ -58,7 +57,7 @@ class BYOL(BaseMomentumMethod):
         # momentum projector
         self.momentum_projector = nn.Sequential(
             nn.Linear(self.features_dim, proj_hidden_dim),
-            # nn.BatchNorm1d(proj_hidden_dim),
+            nn.BatchNorm1d(proj_hidden_dim),
             nn.ReLU(),
             nn.Linear(proj_hidden_dim, proj_output_dim),
         )
@@ -67,47 +66,29 @@ class BYOL(BaseMomentumMethod):
         # predictor
         self.predictor = nn.Sequential(
             nn.Linear(proj_output_dim, pred_hidden_dim),
-            # nn.BatchNorm1d(pred_hidden_dim),
+            nn.BatchNorm1d(pred_hidden_dim),
             nn.ReLU(),
             nn.Linear(pred_hidden_dim, proj_output_dim),
         )
 
-        # self.style_projector = nn.Sequential(
-        #     nn.Linear(2*(64+128+256), proj_hidden_dim//2),
-        #     # nn.BatchNorm1d(proj_hidden_dim//2),
-        #     nn.ReLU(),
-        #     nn.Linear(proj_hidden_dim//2, proj_output_dim)
-        # )
-
-        # self.style_projector = nn.Sequential(
-        #     nn.Linear(2*(512), proj_hidden_dim//2),
-        #     # nn.BatchNorm1d(proj_hidden_dim//2),
-        #     nn.ReLU(),
-        #     nn.Linear(proj_hidden_dim//2, proj_output_dim)
-        # )
-
-        self.style_disc = nn.Sequential(
-            nn.Linear(2*(512), proj_hidden_dim//2),
-            # nn.BatchNorm1d(proj_hidden_dim//2),
-            nn.ReLU(),
-            nn.Linear(proj_hidden_dim//2, proj_hidden_dim//4),
-            nn.ReLU(),
-            nn.Linear(proj_hidden_dim//4, 4)
-        )
-
     @staticmethod
-    def add_model_specific_args(parent_parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-        parent_parser = super(BYOL, BYOL).add_model_specific_args(parent_parser)
-        parser = parent_parser.add_argument_group("byol")
+    def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
+        """Adds method specific default values/checks for config.
 
-        # projector
-        parser.add_argument("--proj_output_dim", type=int, default=256)
-        parser.add_argument("--proj_hidden_dim", type=int, default=2048)
+        Args:
+            cfg (omegaconf.DictConfig): DictConfig object.
 
-        # predictor
-        parser.add_argument("--pred_hidden_dim", type=int, default=512)
+        Returns:
+            omegaconf.DictConfig: same as the argument, used to avoid errors.
+        """
 
-        return parent_parser
+        cfg = super(BYOL, BYOL).add_and_assert_specific_cfg(cfg)
+
+        assert not omegaconf.OmegaConf.is_missing(cfg, "method_kwargs.proj_hidden_dim")
+        assert not omegaconf.OmegaConf.is_missing(cfg, "method_kwargs.proj_output_dim")
+        assert not omegaconf.OmegaConf.is_missing(cfg, "method_kwargs.pred_hidden_dim")
+
+        return cfg
 
     @property
     def learnable_params(self) -> List[dict]:
@@ -118,9 +99,8 @@ class BYOL(BaseMomentumMethod):
         """
 
         extra_learnable_params = [
-            {"params": self.projector.parameters()},
-            {"params": self.predictor.parameters()},
-            {"params": self.style_disc.parameters()},
+            {"name": "projector", "params": self.projector.parameters()},
+            {"name": "predictor", "params": self.predictor.parameters()},
         ]
         return super().learnable_params + extra_learnable_params
 
@@ -148,10 +128,7 @@ class BYOL(BaseMomentumMethod):
         out = super().forward(X)
         z = self.projector(out["feats"])
         p = self.predictor(z)
-        s = self.style_disc((out["style_feats"]))
-        # s = self.style_disc(reverse_grad(out["style_feats"]))
-        out.update({"z": z, "p": p, "s": s,})
-        
+        out.update({"z": z, "p": p})
         return out
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
@@ -169,7 +146,6 @@ class BYOL(BaseMomentumMethod):
         z = self.projector(out["feats"])
         p = self.predictor(z)
         out.update({"z": z, "p": p})
-
         return out
 
     @torch.no_grad()
@@ -186,10 +162,7 @@ class BYOL(BaseMomentumMethod):
 
         out = super().momentum_forward(X)
         z = self.momentum_projector(out["feats"])
-        s = self.style_disc((out["style_feats"]))
-        # s = self.style_disc(reverse_grad(out["style_feats"]))
-        out.update({"z": z, "s": s,})
-        
+        out.update({"z": z})
         return out
 
     def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
@@ -209,7 +182,6 @@ class BYOL(BaseMomentumMethod):
         Z = out["z"]
         P = out["p"]
         Z_momentum = out["momentum_z"]
-        S = out["s"]
 
         # ------- negative consine similarity loss -------
         neg_cos_sim = 0
@@ -220,24 +192,11 @@ class BYOL(BaseMomentumMethod):
         # calculate std of features
         with torch.no_grad():
             z_std = F.normalize(torch.stack(Z[: self.num_large_crops]), dim=-1).std(dim=1).mean()
-            s_std = F.normalize(torch.stack(S[: self.num_large_crops]), dim=-1).std(dim=1).mean()
-
-        style_loss = 0
-        style_exp = 0
-        alpha = (self.current_epoch/self.max_epochs)**style_exp
-
-        for v1 in range(self.num_large_crops):
-            for v2 in np.delete(range(self.num_crops), v1):
-                # style_loss += byol_loss_func(S[v1], Z_momentum[v2])
-                style_loss += byol_discrim_loss(S[v1])
 
         metrics = {
-            "style_loss_coeff": alpha,
-            "train_ssl_loss": neg_cos_sim,
-            "train_style_loss": style_loss, 
+            "train_neg_cos_sim": neg_cos_sim,
             "train_z_std": z_std,
-            "train_s_std": s_std,
         }
         self.log_dict(metrics, on_epoch=True, sync_dist=True)
 
-        return neg_cos_sim + class_loss + alpha * style_loss
+        return neg_cos_sim + class_loss
