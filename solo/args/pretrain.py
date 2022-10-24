@@ -48,6 +48,7 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     assert cfg.data.dataset in _SUPPORTED_DATASETS
 
     # if validation path is not available, assume that we want to skip eval
+    cfg.data.domain = omegaconf_select(cfg, "data.domain", False)
     cfg.data.val_path = omegaconf_select(cfg, "data.val_path", None)
     cfg.data.format = omegaconf_select(cfg, "data.format", "image_folder")
     cfg.data.no_labels = omegaconf_select(cfg, "data.no_labels", False)

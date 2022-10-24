@@ -38,7 +38,7 @@ from solo.backbones import (
     poolformer_s24,
     poolformer_s36,
     resnet18,
-    resnet50,
+    resnet50, 
     swin_base,
     swin_large,
     swin_small,
@@ -50,6 +50,7 @@ from solo.backbones import (
     wide_resnet28w2,
     wide_resnet28w8,
 )
+from solo.backbones.resnet.binorm import BatchInstanceNorm2d
 from solo.utils.knn import WeightedKNNClassifier
 from solo.utils.lars import LARS
 from solo.utils.metrics import accuracy_at_k, weighted_mean
@@ -92,6 +93,11 @@ class BaseMethod(pl.LightningModule):
         "convnext_large": convnext_large,
         "wide_resnet28w2": wide_resnet28w2,
         "wide_resnet28w8": wide_resnet28w8,
+    }
+    _NORMLAYERS = {
+        "bn": nn.BatchNorm2d,
+        "in": nn.InstanceNorm2d,
+        "bin": BatchInstanceNorm2d,
     }
     _OPTIMIZERS = {
         "sgd": torch.optim.SGD,
@@ -190,6 +196,8 @@ class BaseMethod(pl.LightningModule):
         method: str = cfg.method
         self.backbone: nn.Module = self.base_model(method, **kwargs)
         if self.backbone_name.startswith("resnet"):
+
+            # self.backbone.norm_layer = self._NORMLAYERS[cfg.backbone.norm]
             self.features_dim: int = self.backbone.inplanes
             # remove fc layer
             self.backbone.fc = nn.Identity()
