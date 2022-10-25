@@ -214,7 +214,7 @@ class BYOL(BaseMomentumMethod):
             s_std = F.normalize(torch.stack(S[: self.num_large_crops]), dim=-1).std(dim=1).mean()
 
         style_loss = 0
-        style_exp = 3
+        style_exp = 0
         alpha = (self.current_epoch/self.max_epochs)**style_exp
 
         for v1 in range(self.num_large_crops):
@@ -224,7 +224,7 @@ class BYOL(BaseMomentumMethod):
         metrics = {
             "style_loss_coeff": alpha,
             "train_ssl_loss": neg_cos_sim,
-            "train_style_loss": alpha * style_loss, 
+            "train_style_loss": style_loss, 
             "train_z_std": z_std,
             "train_s_std": s_std,
         }
@@ -233,5 +233,5 @@ class BYOL(BaseMomentumMethod):
         # print(self.style_projector.weight.grad)
         # print(self.backbone.weight)
 
-        return alpha * style_loss
+        # return alpha * style_loss
         return neg_cos_sim + class_loss + alpha * style_loss
