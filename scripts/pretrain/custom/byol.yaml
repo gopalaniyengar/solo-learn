@@ -62,7 +62,7 @@ auto_umap:
 
 # overwrite PL stuff
 max_epochs: 150
-devices: 0 #[0, 1]
+devices: [0] #[0, 1]
 accelerator: "gpu"
 # strategy: "ddp"
 # precision: 16
