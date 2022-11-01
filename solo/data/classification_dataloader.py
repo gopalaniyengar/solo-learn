@@ -28,7 +28,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
-from domain_dataset import DomainDataset
+from solo.data.domain_dataset import DomainDataset
 
 try:
     from solo.data.h5_dataset import H5Dataset
