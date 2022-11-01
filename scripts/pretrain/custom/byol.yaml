@@ -42,7 +42,7 @@ data:
   # convert a custom dataset by following `scripts/utils/convert_imgfolder_to_h5.py`
 optimizer:
   name: "lars"
-  batch_size: 64
+  batch_size: 128
   lr: 0.75
   classifier_lr: 0.1
   weight_decay: 1e-5

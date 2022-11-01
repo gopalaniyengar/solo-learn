@@ -490,8 +490,13 @@ class BaseMethod(pl.LightningModule):
 
         out = self(X)
         logits = out["logits"]
-
-        loss = F.cross_entropy(logits, targets, ignore_index=-1)
+        try:
+          loss = F.cross_entropy(logits, targets)#, ignore_index=-1)
+        except RuntimeError:
+          print('\n\n')
+          print(targets)
+          print(logits)
+          print('\n\n')
         # handle when the number of classes is smaller than 5
         top_k_max = min(5, logits.size(1))
         acc1, acc5 = accuracy_at_k(logits, targets, top_k=(1, top_k_max))
@@ -526,14 +531,19 @@ class BaseMethod(pl.LightningModule):
         Returns:
             Dict: dict containing the classification loss, logits, features, acc@1 and acc@5.
         """
-        out = self._base_shared_step(X, targets)
-        
+        out = self(X)
+        logits = out["logits"]
         dom_logits = out["domain_logits"]
-        dom_loss = F.cross_entropy(dom_logits, dom_targets, ignore_index=-1)
-        
+
+        loss = F.cross_entropy(logits, targets)#, ignore_index=-1)
+        dom_loss = F.cross_entropy(dom_logits, dom_targets)#, ignore_index=-1)
+
+        top_k_max = min(5, logits.size(1))
+        acc1, acc5 = accuracy_at_k(logits, targets, top_k=(1, top_k_max))
         dacc1, dacc2 = accuracy_at_k(dom_logits, dom_targets, top_k=(1, 2))
         dwiseacc = domainwise_acc(dom_logits, dom_targets, self.ddict)
-        
+
+        out.update({"loss": loss, "acc1": acc1, "acc5": acc5})
         out.update({"dom_loss": dom_loss, "dom_acc1": dacc1, "dom_acc2": dacc2})
         out.update(dwiseacc)
         
@@ -780,7 +790,8 @@ class BaseMomentumMethod(BaseMethod):
 
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
-        feats = self.momentum_backbone(X)
+        feats, style_feats = self.momentum_backbone(X)
+        # feats = self.momentum_backbone(X)
         return {"feats": feats}
 
     def _shared_step_momentum(self, X: torch.Tensor, targets: torch.Tensor) -> Dict[str, Any]:
@@ -825,7 +836,10 @@ class BaseMomentumMethod(BaseMethod):
 
         outs = super().training_step(batch, batch_idx)
 
-        _, X, targets = batch
+        if self.isdomain:
+          _, X, targets, domains = batch
+        else:
+          _, X, targets = batch
         X = [X] if isinstance(X, torch.Tensor) else X
 
         # remove small crops
@@ -903,7 +917,10 @@ class BaseMomentumMethod(BaseMethod):
 
         parent_metrics = super().validation_step(batch, batch_idx)
 
-        X, targets = batch
+        if self.isdomain:
+          X, targets, domains = batch
+        else:
+          X, targets = batch
         batch_size = targets.size(0)
 
         out = self._shared_step_momentum(X, targets)
