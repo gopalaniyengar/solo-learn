@@ -223,8 +223,8 @@ class BaseMethod(pl.LightningModule):
 
         # online linear classifier
         self.num_classes: int = cfg.data.num_classes
-        self.num_domains: int = 4
-        self.ddict: dict = {0: 'art', 1: 'clipart', 2: 'product', 3: 'realworld'}
+        self.num_domains: int = cfg.data.num_domains
+        self.ddict: dict = cfg.data.domain_mapper 
         self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
         self.dom_classifier: nn.Module = nn.Linear(self.features_dim, self.num_domains)
 

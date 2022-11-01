@@ -207,7 +207,7 @@ class BYOL(BaseMomentumMethod):
         """
 
         out = super().training_step(batch, batch_idx)
-        class_loss = out["loss"]
+        class_loss = out["loss"] + out["dom_loss"]
         Z = out["z"]
         P = out["p"]
         Z_momentum = out["momentum_z"]
