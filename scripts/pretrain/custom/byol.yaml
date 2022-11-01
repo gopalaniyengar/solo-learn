@@ -31,7 +31,7 @@ data:
   dataset: "domain"
   num_classes: 65
   num_domains: 4
-  domain_mapper= {0: 'art', 1: 'clipart', 2: 'product', 3: 'realworld'}
+  domain_mapper: {0: 'art', 1: 'clipart', 2: 'product', 3: 'realworld'}
   train_path: "/content/drive/MyDrive/BTP/Baseline/train_new/"
   val_path: "/content/drive/MyDrive/BTP/Baseline/test_new/"  # remove this if there's no validation dir
   format: "image_folder" # data format, supports "image_folder", "dali" or "h5"
@@ -42,7 +42,7 @@ data:
   # convert a custom dataset by following `scripts/utils/convert_imgfolder_to_h5.py`
 optimizer:
   name: "lars"
-  batch_size: 128
+  batch_size: 64
   lr: 0.75
   classifier_lr: 0.1
   weight_decay: 1e-5
