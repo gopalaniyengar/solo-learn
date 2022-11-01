@@ -195,10 +195,10 @@ class BaseMethod(pl.LightningModule):
 
         ########## Backbone ##########
         self.backbone_args: Dict[str, Any] = cfg.backbone.kwargs
-        assert cfg.backbone.name in BaseMethod._BACKBONES
         self.backbone_name: str = cfg.backbone.name
         if self.backbone_name.startswith("resnet"):
-            self.backbone_name = self.backbone_name + '_' +  self.backbone.norm         
+            self.backbone_name = self.backbone_name + '_' +  cfg.backbone.norm  
+        assert self.backbone_name in BaseMethod._BACKBONES       
         # self.base_model: Callable = self._BACKBONES[cfg.backbone.name]
         self.base_model: Callable = self._BACKBONES[self.backbone_name]# initialize backbone
         kwargs = self.backbone_args.copy()
@@ -453,7 +453,7 @@ class BaseMethod(pl.LightningModule):
 
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
-        feats = self.backbone(X)
+        feats, style_feats = self.backbone(X)
         logits = self.classifier(feats.detach())
         dom_logits = self.dom_classifier(feats.detach())
         return {"logits": logits, "domain_logits": dom_logits, "feats": feats}
@@ -473,7 +473,7 @@ class BaseMethod(pl.LightningModule):
 
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
-        feats = self.backbone(X)
+        feats, style_feats = self.backbone(X)
         return {"feats": feats}
 
     def _base_shared_step(self, X: torch.Tensor, targets: torch.Tensor) -> Dict:
