@@ -15,7 +15,7 @@ hydra:
   run:
     dir: .
 
-name: "baseline"
+name: "bb-detach-dom"
 method: "byol"
 backbone:
   name: "resnet18" #"resnet18"
@@ -32,7 +32,7 @@ data:
   train_path: "/content/drive/MyDrive/BTP/Baseline/train_new/"
   val_path: "/content/drive/MyDrive/BTP/Baseline/test_new/"  # remove this if there's no validation dir
   format: "image_folder" # data format, supports "image_folder", "dali" or "h5"
-  num_workers: 12
+  num_workers: 2
   no_labels: False
   # set this to True if the dataset is not stored as subfolders for each class
   # if no labels are provided, "h5" is not supported
