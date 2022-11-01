@@ -24,10 +24,10 @@ import omegaconf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from solo.losses.byol import byol_loss_func
+from solo.losses.byol import *
 from solo.methods.base import BaseMomentumMethod
 from solo.utils.momentum import initialize_momentum_params
-
+from solo.utils.grl import reverse_grad
 
 class BYOL(BaseMomentumMethod):
     def __init__(self, cfg: omegaconf.DictConfig):
@@ -71,6 +71,20 @@ class BYOL(BaseMomentumMethod):
             nn.Linear(pred_hidden_dim, proj_output_dim),
         )
 
+        if self.domaindata == "domain":    
+            # style discriminator
+            self.discriminator = nn.Sequential(
+                # nn.Linear(proj_output_dim, pred_hidden_dim),
+                # nn.BatchNorm1d(pred_hidden_dim),
+                nn.Linear(self.features_dim, proj_hidden_dim),
+                nn.ReLU(),
+                nn.Linear(proj_hidden_dim, proj_hidden_dim//2),
+                nn.ReLU(),
+                nn.Linear(proj_hidden_dim//2, proj_hidden_dim//4),
+                nn.ReLU(),
+                nn.Linear(proj_hidden_dim//4, self.num_domains),
+            )
+
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
         """Adds method specific default values/checks for config.
@@ -102,7 +116,12 @@ class BYOL(BaseMomentumMethod):
             {"name": "projector", "params": self.projector.parameters()},
             {"name": "predictor", "params": self.predictor.parameters()},
         ]
-        return super().learnable_params + extra_learnable_params
+
+        if self.isdomain:   
+            disc_params =  [{"name": "discriminator", "params": self.discriminator.parameters()}]
+            return super().learnable_params + extra_learnable_params + disc_params
+        else:
+            return super().learnable_params + extra_learnable_params
 
     @property
     def momentum_pairs(self) -> List[Tuple[Any, Any]]:
@@ -129,6 +148,11 @@ class BYOL(BaseMomentumMethod):
         z = self.projector(out["feats"])
         p = self.predictor(z)
         out.update({"z": z, "p": p})
+        
+        if self.isdomain:   
+            s = self.discriminator(out["feats"].detach())       # detach, attach, attach grl
+            out.update({"s": s})
+        
         return out
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
@@ -163,13 +187,18 @@ class BYOL(BaseMomentumMethod):
         out = super().momentum_forward(X)
         z = self.momentum_projector(out["feats"])
         out.update({"z": z})
+        
+        if self.isdomain:   
+            s = self.discriminator(out["feats"].detach())       # detach, attach, attach grl
+            out.update({"s": s})
+        
         return out
 
     def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
         """Training step for BYOL reusing BaseMethod training step.
 
         Args:
-            batch (Sequence[Any]): a batch of data in the format of [img_indexes, [X], Y], where
+            batch (Sequence[Any]): a batch of data in the format of [img_indexes, [X], Y, YD], where
                 [X] is a list of size num_crops containing batches of images.
             batch_idx (int): index of the batch.
 
@@ -182,21 +211,44 @@ class BYOL(BaseMomentumMethod):
         Z = out["z"]
         P = out["p"]
         Z_momentum = out["momentum_z"]
-
-        # ------- negative consine similarity loss -------
+        
+        # ------- negative cosine similarity loss -------
         neg_cos_sim = 0
         for v1 in range(self.num_large_crops):
             for v2 in np.delete(range(self.num_crops), v1):
                 neg_cos_sim += byol_loss_func(P[v2], Z_momentum[v1])
-
-        # calculate std of features
-        with torch.no_grad():
-            z_std = F.normalize(torch.stack(Z[: self.num_large_crops]), dim=-1).std(dim=1).mean()
-
+        
         metrics = {
-            "train_neg_cos_sim": neg_cos_sim,
+            "train_ssl_loss": neg_cos_sim,
             "train_z_std": z_std,
         }
-        self.log_dict(metrics, on_epoch=True, sync_dist=True)
+        
+        # ------- style discriminator loss -------
+        if self.isdomain:
 
-        return neg_cos_sim + class_loss
+            S = out["s"]
+            S_momentum = out["momentum_s"]
+            _, X, targets, domains = batch
+
+            style_exp = 0
+            style_loss = 0
+            alpha = (self.current_epoch/self.max_epochs)**style_exp
+                
+            for v1 in range(self.num_large_crops):
+                for v2 in np.delete(range(self.num_crops), v1):
+                    # style_loss += byol_loss_func(S[v1], S_momentum[v2])
+                    style_loss += byol_discrim_loss(s = S[v1], targets = domains, num_domains = self.num_domains)
+
+        # ------- calculate std of features -------
+        with torch.no_grad():
+            z_std = F.normalize(torch.stack(Z[: self.num_large_crops]), dim=-1).std(dim=1).mean()
+            if self.isdomain:
+                s_std = F.normalize(torch.stack(S[: self.num_large_crops]), dim=-1).std(dim=1).mean()
+                metrics.update({"alpha": alpha, "train_style_loss": style_loss, "train_s_std": s_std})
+       
+        self.log_dict(metrics, on_epoch=True, sync_dist=True)
+        
+        if self.isdomain:
+            return neg_cos_sim + class_loss + alpha*style_loss
+        else:
+            return neg_cos_sim + class_loss

@@ -57,7 +57,7 @@ from solo.backbones import (
 from solo.backbones.resnet.binorm import BatchInstanceNorm2d
 from solo.utils.knn import WeightedKNNClassifier
 from solo.utils.lars import LARS
-from solo.utils.metrics import accuracy_at_k, weighted_mean
+from solo.utils.metrics import accuracy_at_k, domainwise_acc, weighted_mean
 from solo.utils.misc import omegaconf_select, remove_bias_and_norm_from_weight_decay
 from solo.utils.momentum import MomentumUpdater, initialize_momentum_params
 from torch.optim.lr_scheduler import MultiStepLR
@@ -196,9 +196,11 @@ class BaseMethod(pl.LightningModule):
         ########## Backbone ##########
         self.backbone_args: Dict[str, Any] = cfg.backbone.kwargs
         assert cfg.backbone.name in BaseMethod._BACKBONES
-        self.base_model: Callable = self._BACKBONES[cfg.backbone.name]
         self.backbone_name: str = cfg.backbone.name
-        # initialize backbone
+        if self.backbone_name.startswith("resnet"):
+            self.backbone_name = self.backbone_name + '_' +  self.backbone.norm         
+        # self.base_model: Callable = self._BACKBONES[cfg.backbone.name]
+        self.base_model: Callable = self._BACKBONES[self.backbone_name]# initialize backbone
         kwargs = self.backbone_args.copy()
 
         method: str = cfg.method
@@ -221,7 +223,10 @@ class BaseMethod(pl.LightningModule):
 
         # online linear classifier
         self.num_classes: int = cfg.data.num_classes
+        self.num_domains: int = 4
+        self.ddict: dict = {0: 'art', 1: 'clipart', 2: 'product', 3: 'realworld'}
         self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
+        self.dom_classifier: nn.Module = nn.Linear(self.features_dim, self.num_domains)
 
         # training related
         self.max_epochs: int = cfg.max_epochs
@@ -258,6 +263,8 @@ class BaseMethod(pl.LightningModule):
             self.warmup_start_lr = self.warmup_start_lr * self.accumulate_grad_batches
 
         # data-related
+        self.domaindata: bool = cfg.data.dataset
+        self.isdomain = (self.domaindata == "domain")
         self.num_large_crops: int = cfg.data.num_large_crops
         self.num_small_crops: int = cfg.data.num_small_crops
         self.num_crops: int = self.num_large_crops + self.num_small_crops
@@ -335,6 +342,12 @@ class BaseMethod(pl.LightningModule):
             {
                 "name": "classifier",
                 "params": self.classifier.parameters(),
+                "lr": self.classifier_lr,
+                "weight_decay": 0,
+            },
+            {
+                "name": "domain_classifier",
+                "params": self.dom_classifier.parameters(),
                 "lr": self.classifier_lr,
                 "weight_decay": 0,
             },
@@ -442,7 +455,8 @@ class BaseMethod(pl.LightningModule):
             X = X.to(memory_format=torch.channels_last)
         feats = self.backbone(X)
         logits = self.classifier(feats.detach())
-        return {"logits": logits, "feats": feats}
+        dom_logits = self.dom_classifier(feats.detach())
+        return {"logits": logits, "domain_logits": dom_logits, "feats": feats}
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Basic multicrop forward method that performs the forward pass
@@ -497,8 +511,33 @@ class BaseMethod(pl.LightningModule):
         Returns:
             Dict: dict containing the classification loss, logits, features, acc@1 and acc@5.
         """
-
+        
         return self._base_shared_step(X, targets)
+    
+    def base_validation_step(self, X: torch.Tensor, targets: torch.Tensor, dom_targets: torch.Tensor) -> Dict:
+        """Allows user to re-write how the forward step behaves for the validation_step.
+        Should always return a dict containing, at least, "loss", "acc1" and "acc5".
+        Defaults to _base_shared_step
+
+        Args:
+            X (torch.Tensor): batch of images in tensor format.
+            targets (torch.Tensor): batch of labels for X.
+
+        Returns:
+            Dict: dict containing the classification loss, logits, features, acc@1 and acc@5.
+        """
+        out = self._base_shared_step(X, targets)
+        
+        dom_logits = out["domain_logits"]
+        dom_loss = F.cross_entropy(dom_logits, dom_targets, ignore_index=-1)
+        
+        dacc1, dacc2 = accuracy_at_k(dom_logits, dom_targets, top_k=(1, 2))
+        dwiseacc = domainwise_acc(dom_logits, dom_targets, self.ddict)
+        
+        out.update({"dom_loss": dom_loss, "dom_acc1": dacc1, "dom_acc2": dacc2})
+        out.update(dwiseacc)
+        
+        return out
 
     def training_step(self, batch: List[Any], batch_idx: int) -> Dict[str, Any]:
         """Training step for pytorch lightning. It does all the shared operations, such as
@@ -512,8 +551,10 @@ class BaseMethod(pl.LightningModule):
         Returns:
             Dict[str, Any]: dict with the classification loss, features and logits.
         """
-
-        _, X, targets = batch
+        if self.isdomain:
+            _, X, targets, domains = batch
+        else:
+            _, X, targets = batch
 
         X = [X] if isinstance(X, torch.Tensor) else X
 
@@ -551,21 +592,6 @@ class BaseMethod(pl.LightningModule):
 
         return outs
 
-    def base_validation_step(self, X: torch.Tensor, targets: torch.Tensor) -> Dict:
-        """Allows user to re-write how the forward step behaves for the validation_step.
-        Should always return a dict containing, at least, "loss", "acc1" and "acc5".
-        Defaults to _base_shared_step
-
-        Args:
-            X (torch.Tensor): batch of images in tensor format.
-            targets (torch.Tensor): batch of labels for X.
-
-        Returns:
-            Dict: dict containing the classification loss, logits, features, acc@1 and acc@5.
-        """
-
-        return self._base_shared_step(X, targets)
-
     def validation_step(
         self, batch: List[torch.Tensor], batch_idx: int, dataloader_idx: int = None
     ) -> Dict[str, Any]:
@@ -581,20 +607,34 @@ class BaseMethod(pl.LightningModule):
                 and accuracies.
         """
 
-        X, targets = batch
-        batch_size = targets.size(0)
-
-        out = self.base_validation_step(X, targets)
-
-        if self.knn_eval and not self.trainer.sanity_checking:
-            self.knn(test_features=out.pop("feats").detach(), test_targets=targets.detach())
-
-        metrics = {
-            "batch_size": batch_size,
+        if self.isdomain:
+            X, targets, domains = batch
+            out = self.base_validation_step(X, targets, domains)
+            metrics = {
+            "batch_size": targets.size(0),
             "val_loss": out["loss"],
             "val_acc1": out["acc1"],
             "val_acc5": out["acc5"],
-        }
+            "val_dom_loss": out["dom_loss"],
+            "val_dom_acc1": out["dom_acc1"],
+            "val_dom_acc2": out["dom_acc2"],
+            }
+            self.dwisemetrics = {f'val_acc_{self.ddict[i]}':out[f'val_acc_{self.ddict[i]}'] for i in range(len(self.ddict))}
+            metrics.update(self.dwisemetrics)
+            
+        else:
+            X, targets = batch
+            out = self._base_shared_step(X, targets)
+            metrics = {
+            "batch_size": targets.size(0),
+            "val_loss": out["loss"],
+            "val_acc1": out["acc1"],
+            "val_acc5": out["acc5"],
+            }
+
+        if self.knn_eval and not self.trainer.sanity_checking:
+            self.knn(test_features=out.pop("feats").detach(), test_targets=targets.detach())
+        
         return metrics
 
     def validation_epoch_end(self, outs: List[Dict[str, Any]]):
@@ -611,6 +651,13 @@ class BaseMethod(pl.LightningModule):
         val_acc5 = weighted_mean(outs, "val_acc5", "batch_size")
 
         log = {"val_loss": val_loss, "val_acc1": val_acc1, "val_acc5": val_acc5}
+        
+        if self.isdomain:
+            val_dom_loss = weighted_mean(outs, "val_dom_loss", "batch_size")
+            val_dom_acc1 = weighted_mean(outs, "val_dom_acc1", "batch_size")
+            val_dom_acc2 = weighted_mean(outs, "val_dom_acc2", "batch_size")
+            log.update({"val_dom_loss": val_dom_loss, "val_dom_acc1": val_dom_acc1, "val_dom_acc2": val_dom_acc2})
+            log.update(self.dwisemetrics)
 
         if self.knn_eval and not self.trainer.sanity_checking:
             val_knn_acc1, val_knn_acc5 = self.knn.compute()

@@ -30,6 +30,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
+from solo.data.domain_dataset import DomainDataset
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -348,6 +349,10 @@ def prepare_datasets(
         else:
             dataset_class = ImageFolder
 
+        train_dataset = dataset_with_index(dataset_class)(train_data_path, transform)
+
+    elif dataset == "domain":
+        dataset_class = DomainDataset
         train_dataset = dataset_with_index(dataset_class)(train_data_path, transform)
 
     if data_fraction > 0:

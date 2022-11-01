@@ -23,7 +23,7 @@ import random
 import string
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 
 import pandas as pd
 import pytorch_lightning as pl
@@ -47,7 +47,7 @@ class AutoUMAP(Callback):
         frequency: int = 1,
         keep_previous: bool = False,
         color_palette: str = "hls",
-        discrim: bool = False
+        domain: bool = False
     ):
         """UMAP callback that automatically runs UMAP on the validation dataset and uploads the
         figure to wandb.
@@ -69,7 +69,7 @@ class AutoUMAP(Callback):
         self.frequency = frequency
         self.color_palette = color_palette
         self.keep_previous = keep_previous
-        self.discrim = discrim
+        self.domain = domain
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: DictConfig) -> DictConfig:
@@ -136,7 +136,7 @@ class AutoUMAP(Callback):
 
         self.initial_setup(trainer)
 
-    def plot(self, trainer: pl.Trainer, module: pl.LightningModule):
+    def plot_old(self, trainer: pl.Trainer, module: pl.LightningModule):
         """Produces a UMAP visualization by forwarding all data of the
         first validation dataloader through the module.
 
@@ -147,7 +147,6 @@ class AutoUMAP(Callback):
 
         device = module.device
         bb_feats = []
-        bb_style_feats = []
         style_proj_feats = []
         cont_proj_feats = []
 
@@ -162,30 +161,22 @@ class AutoUMAP(Callback):
 
                 all_feats_dict = module(x)
                 feat = all_feats_dict["feats"]
-                style_feat = all_feats_dict["style_feats"]
                 style_proj = all_feats_dict["s"]
                 cont_proj = all_feats_dict["z"]
 
-                feat = gather(feat)
-                style_feat = gather(style_feat)
-                style_proj = gather(style_proj)
-                cont_proj = gather(cont_proj)
                 y = gather(y)
-
                 bb_feats.append(feat.cpu())
-                bb_style_feats.append(style_feat.cpu())
                 style_proj_feats.append(style_proj.cpu())
                 cont_proj_feats.append(cont_proj.cpu())
-                # data.append(feats.cpu())
                 Y.append(y.cpu())
 
         module.train()
-        if self.discrim:
-            umap_keys = ['backbone_features','style_features','content_projections']
-            umap_data = [bb_feats, bb_style_feats, cont_proj_feats]
+        if self.domain:
+            umap_keys = ['backbone_features','content_projections']
+            umap_data = [bb_feats, cont_proj_feats]
         else:
-            umap_keys = ['backbone_features','style_features','style_projections','content_projections']
-            umap_data = [bb_feats, bb_style_feats, style_proj_feats, cont_proj_feats]
+            umap_keys = ['backbone_features','style_projections','content_projections']
+            umap_data = [bb_feats, style_proj_feats, cont_proj_feats]
         palettes  = ['hls', 'hls', 'hls', 'hls']
         sns.set_palette("dark")
 
@@ -239,6 +230,164 @@ class AutoUMAP(Callback):
                 epoch = trainer.current_epoch  # type: ignore
                 # plt.savefig(self.path / self.umap_placeholder.format(epoch))
                 plt.close()
+    
+    def gather_for_umap(self, feat_list: Dict, key: str):
+        
+        feat = feat_list[key]
+        feat = gather(feat)
+        return feat.cpu()
+
+    def plot(self, trainer: pl.Trainer, module: pl.LightningModule):
+        """Produces a UMAP visualization by forwarding all data of the
+        first validation dataloader through the module.
+
+        Args:
+            trainer (pl.Trainer): pytorch lightning trainer object.
+            module (pl.LightningModule): current module object.
+        """
+
+        device = module.device
+        bb_feats = []
+        style_proj_feats = []
+        cont_proj_feats = []
+        styleproj_flag = False
+
+        module.eval()
+        with torch.no_grad():
+            
+            if not self.domain:        
+                Y = []
+                for x, y in trainer.val_dataloaders[0]:
+                   
+                    x = x.to(device, non_blocking=True)
+                    y = y.to(device, non_blocking=True)
+                    all_feats_dict = module(x)
+                    
+                    feat = self.gather_for_umap(all_feats_dict, "feats")
+                    cont_proj = self.gather_for_umap(all_feats_dict, "z")
+                    if "s" in all_feats_dict.keys():
+                        styleproj_flag = True
+                        style_proj = self.gather_for_umap(all_feats_dict, "s")
+                        style_proj_feats.append(style_proj)
+                    y = gather(y).cpu()
+
+                    bb_feats.append(feat)
+                    cont_proj_feats.append(cont_proj)
+                    Y.append(y)
+
+            else: 
+                Y = []
+                YD = []
+                for x, yc, yd in trainer.val_dataloaders[0]:
+                    
+                    x = x.to(device, non_blocking=True)
+                    yc = yc.to(device, non_blocking=True)
+                    yd = yd.to(device, non_blocking=True)
+                    all_feats_dict = module(x)
+
+                    feat = self.gather_for_umap(all_feats_dict, "feats")
+                    cont_proj = self.gather_for_umap(all_feats_dict, "z")
+                    if "s" in all_feats_dict.keys():
+                        styleproj_flag = True
+                        style_proj = self.gather_for_umap(all_feats_dict, "s")
+                        style_proj_feats.append(style_proj)                    
+                    yc = gather(yc).cpu()
+                    yd = gather(yd).cpu()
+
+                    bb_feats.append(feat)
+                    cont_proj_feats.append(cont_proj)
+                    Y.append(yc)
+                    YD.append(yd)
+
+        module.train()
+        sns.set_palette("dark")
+        if not styleproj_flag:
+            umap_keys = ['backbone_features','content_projections']
+            umap_data = [bb_feats, cont_proj_feats]
+        else:
+            umap_keys = ['backbone_features','style_projections','content_projections']
+            umap_data = [bb_feats, style_proj_feats, cont_proj_feats]
+
+        for idxx, data in enumerate(umap_data):
+            
+            if trainer.is_global_zero and len(data):
+                
+                    data = torch.cat(data, dim=0).numpy()
+                    data = umap.UMAP(n_components=2).fit_transform(data)
+
+                    dY = torch.cat(Y, dim=0)
+                    num_classes = len(torch.unique(dY))
+                    dY = dY.numpy()
+                    
+                    df = pd.DataFrame()
+                    df["feat_1"] = data[:, 0]
+                    df["feat_2"] = data[:, 1]
+                    df["Y"] = dY
+                    
+                    plt.figure(figsize=(16, 9))
+                    ax = sns.scatterplot(
+                        x="feat_1",
+                        y="feat_2",
+                        hue="Y",
+                        palette=sns.color_palette('hls', num_classes),
+                        data=df,
+                        legend="full",
+                        alpha=0.3,
+                    )
+                    ax.set(xlabel="", ylabel="", xticklabels=[], yticklabels=[])
+                    ax.tick_params(left=False, right=False, bottom=False, top=False)
+                    
+                    if num_classes > 100:
+                        anchor = (0.5, 1.8)
+                    else:
+                        anchor = (0.5, 1.35)
+                    
+                    plt.legend(loc="upper center", bbox_to_anchor=anchor, ncol=math.ceil(num_classes / 10))
+                    plt.tight_layout()
+                    if isinstance(trainer.logger, pl.loggers.WandbLogger):
+                        wandb.log(
+                            {f'{umap_keys[idxx]}_class': wandb.Image(ax)},
+                            commit=False,
+                        )
+                    plt.close()
+
+                    if self.domain:  
+
+                        dYD = torch.cat(YD, dim=0)
+                        num_domains = len(torch.unique(dYD))
+                        dYD = dYD.numpy()
+
+                        df = pd.DataFrame()
+                        df["feat_1"] = data[:, 0]
+                        df["feat_2"] = data[:, 1]
+                        df["Y"] = dYD
+                        
+                        plt.figure(figsize=(16, 9))
+                        ax = sns.scatterplot(
+                            x="feat_1",
+                            y="feat_2",
+                            hue="Y",
+                            palette=sns.color_palette('hls', num_domains),
+                            data=df,
+                            legend="full",
+                            alpha=0.3,
+                        )
+                        ax.set(xlabel="", ylabel="", xticklabels=[], yticklabels=[])
+                        ax.tick_params(left=False, right=False, bottom=False, top=False)
+                        
+                        if num_domains > 100:
+                            anchor = (0.5, 1.8)
+                        else:
+                            anchor = (0.5, 1.35)
+                        
+                        plt.legend(loc="upper center", bbox_to_anchor=anchor, ncol=math.ceil(num_domains / 10))
+                        plt.tight_layout()
+                        if isinstance(trainer.logger, pl.loggers.WandbLogger):
+                            wandb.log(
+                                {f'{umap_keys[idxx]}_domain': wandb.Image(ax)},
+                                commit=False,
+                            )
+                        plt.close()                   
 
     def on_validation_end(self, trainer: pl.Trainer, module: pl.LightningModule):
         """Tries to generate an up-to-date UMAP visualization of the features
@@ -399,6 +548,5 @@ class OfflineUMAP:
         cnt_proj = umap.UMAP(n_components=2).fit_transform(cnt_proj) 
 
         self.subplot(data, Y, num_classes, plot_path, suffix='_bb_feats.pdf')
-        self.subplot(inst_data, Y, num_classes, plot_path, suffix='_bb_style_feats.pdf')
         self.subplot(st_proj, Y, num_classes, plot_path, suffix='_style_projection.pdf')
         self.subplot(cnt_proj, Y, num_classes, plot_path, suffix='_content_projection.pdf')

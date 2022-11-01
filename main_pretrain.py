@@ -194,6 +194,7 @@ def main(cfg: DictConfig):
             cfg.name,
             logdir=os.path.join(cfg.auto_umap.dir, cfg.method),
             frequency=cfg.auto_umap.frequency,
+            domain = ("domain"==cfg.data.dataset)
         )
         callbacks.append(auto_umap)
 

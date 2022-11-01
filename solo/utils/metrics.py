@@ -71,3 +71,37 @@ def weighted_mean(outputs: List[Dict], key: str, batch_size_key: str) -> float:
         n += out[batch_size_key]
     value = value / n
     return value.squeeze(0)
+
+def domainwise_acc(dom_logits: torch.Tensor, dom_targets: torch.Tensor, ddict: Dict) -> List[Dict]:
+    """Computes the accuracy of predictions separately for each domain.
+
+    Args:
+        dom_logits (torch.Tensor): Domain classifier raw predictions.
+        dom_targets (torch.Tensor): Domain actual labels.
+        ddict (Dict): Domain label to domain name mapping
+
+    Returns:
+        List[Dict]: Domainwise accuracy
+    """
+    
+    _, pred = dom_logits.topk(1, 1, True, True)
+    preds = pred.t().squeeze()
+    labels = dom_targets.squeeze()
+    matches = preds.eq(labels)
+
+    acc = [0 for c in range(len(ddict))]
+    for c in range(len(ddict)):
+        acc[c] = (matches * labels.eq(c)).sum() / max(int(labels.eq(c).sum()), 1)
+
+    out = {f'val_acc_{ddict[i]}':acc[i].item() for i in range(len(ddict))}
+    return out
+
+if __name__ == '__main__':
+
+    a = torch.tensor([[1.2, 2.4, 5.4, 3.6], [3.2, 2.6, 6.4, 5.6], [3.2, 1.4, 3.4, 6.6], [0.2, 3.4, 1.4, 2.6]])
+    b = torch.tensor([0,3,3,1])
+    ddict = {0: 'art', 1: 'clipart', 2: 'product', 3: 'realworld'}
+    out = domainwise_acc(a,b,ddict)
+    art = 'art'
+    print(out)
+    print(out[f'val_acc_{art}'])

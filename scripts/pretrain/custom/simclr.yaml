@@ -1,7 +1,6 @@
 
 # how to configure the augmentations
 # it's also possible to copy paste here for a finer control
-
 defaults:
   - _self_
   - augmentations: symmetric.yaml
@@ -15,34 +14,30 @@ hydra:
   run:
     dir: .
 
-name: "baseline"
-method: "byol"
+name: "simclr-domain-nojit"
+method: "simclr"
 backbone:
-  name: "resnet18" #"resnet18"
-  norm: "bin" #in, bn, bin
+  name: "resnet18"
 method_kwargs:
   proj_hidden_dim: 2048
   proj_output_dim: 256
-  pred_hidden_dim: 4096
-momentum:
-  base_tau: 0.99
-  final_tau: 1.0
+  temperature: 0.2
 data:
-  dataset: "domain"
-  train_path: "/content/drive/MyDrive/BTP/Baseline/train_new/"
-  val_path: "/content/drive/MyDrive/BTP/Baseline/test_new/"  # remove this if there's no validation dir
-  format: "image_folder" # data format, supports "image_folder", "dali" or "h5"
-  num_workers: 12
-  no_labels: False
+  dataset: "custom"
+  train_path: "/content/drive/MyDrive/BTP/Baseline/train_domain/"
+  val_path: "/content/drive/MyDrive/BTP/Baseline/test_domain/"  # remove this if there's no validation dir
+  format: "dali" # data format, supports "image_folder", "dali" or "h5"
+  num_workers: 2
   # set this to True if the dataset is not stored as subfolders for each class
   # if no labels are provided, "h5" is not supported
   # convert a custom dataset by following `scripts/utils/convert_imgfolder_to_h5.py`
+  no_labels: False
 optimizer:
   name: "lars"
-  batch_size: 128
-  lr: 0.75
+  batch_size: 64
+  lr: 0.5
   classifier_lr: 0.1
-  weight_decay: 1e-5
+  weight_decay: 1e-6
   kwargs:
     clip_lr: True
     eta: 0.02
@@ -50,9 +45,9 @@ optimizer:
 scheduler:
   name: "warmup_cosine"
 checkpoint:
-  enabled: False
-  dir: "/content/drive/MyDrive/BTP/Baseline/checkpoints_domain/"
-  frequency: 10
+  enabled: True
+  dir: "trained_models"
+  frequency: 1
 auto_resume:
   enabled: True
 auto_umap:
@@ -62,8 +57,5 @@ auto_umap:
 
 # overwrite PL stuff
 max_epochs: 150
-devices: 0 #[0, 1]
+devices: [0]
 accelerator: "gpu"
-# strategy: "ddp"
-# precision: 16
-# sync_batchnorm: True
