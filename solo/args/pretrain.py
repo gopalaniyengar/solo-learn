@@ -29,6 +29,7 @@ _SUPPORTED_DATASETS = [
     "imagenet",
     "imagenet100",
     "custom",
+    "domain",
 ]
 
 
